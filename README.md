@@ -20,7 +20,7 @@ The baseline reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chem
 | Step | Status | Notes |
 |---|---|---|
 | 0. Repo setup | done | Rules (`AGENTS.md`), README skeleton |
-| 1. Environment | pending | |
+| 1. Environment | done | TACC's `openfoam/8` module (intel/23.1 + impi/21.9) works through `01_environment/env.sh`; all compute goes in batch jobs (TACC AI policy) |
 | 2. Build detonationFoam v1.2 | pending | |
 | 3. Migrate Stanford case | pending | |
 | 4. ZND initialization | pending | |
