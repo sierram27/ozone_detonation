@@ -1,0 +1,56 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  7
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      chemistryProperties;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+chemistryType
+{
+    solver          ode;
+    method          loadBalanced;
+}
+
+chemistry           on;
+
+loadbalancing
+{
+    active true;
+    log	false;
+}
+
+refmapping
+{
+  
+}
+
+
+initialChemicalTimeStep 1e-12;
+
+EulerImplicitCoeffs
+{
+    cTauChem        1;
+    equilibriumRateLimiter off;
+}
+
+odeCoeffs
+{
+    solver          seulex;
+    absTol          1e-9;
+    relTol          1e-6;
+}
+
+// OF8: reactions are #included here (OF6 read them via foamChemistryFile in thermophysicalProperties)
+#include "$FOAM_CASE/constant/chemFFCM2"
+
+// ************************************************************************* //

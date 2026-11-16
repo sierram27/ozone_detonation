@@ -1,0 +1,66 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  7
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      fvSchemes;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+fluxScheme		Kurganov;
+
+ddtSchemes
+{
+    default         Euler;
+}
+
+gradSchemes
+{
+	default         Gauss linear;
+}
+
+divSchemes
+{
+       	default        Gauss linear;
+	div(tauMC)     Gauss linear;
+        div(phi,Yi_h)  Gauss vanLeer;      // v1.0 name (unused by v1.2, kept for reference)
+        div(rhoPhi,Yi_h)  Gauss vanLeer;   // v1.2 name for the same term; same scheme as original
+}
+
+laplacianSchemes
+{
+		default			Gauss linear corrected;	
+}
+
+interpolationSchemes
+{
+    default             linear;
+    reconstruct(rho)    Minmod;
+    reconstruct(U)      MinmodV;
+    reconstruct(e)      Minmod;
+    reconstruct(p)      Minmod;
+    reconstruct(c)      Minmod;
+    reconstruct(Y)      Minmod;
+    reconstruct(T)      Minmod;
+    // v1.2 reconstructs rhoU and rPsi (=p/rho) instead of U and p.
+    // Without these entries they would silently fall back to 'linear' (no limiter).
+    // Use the same limiters the original applied to U and p.
+    reconstruct(rhoU)   MinmodV;
+    reconstruct(rPsi)   Minmod;
+}  
+
+snGradSchemes
+{
+		default				corrected;
+}
+
+
+// ************************************************************************* //

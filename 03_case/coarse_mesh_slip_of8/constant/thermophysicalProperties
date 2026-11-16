@@ -1,0 +1,37 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  7
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      thermophysicalProperties;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+thermoType
+{
+    type             hePsiThermo;
+    mixture         multiComponentMixture;   // OF8: was reactingMixture (OF6/7)
+    transport       sutherland;
+    thermo          janaf;
+    energy          sensibleInternalEnergy;
+    equationOfState perfectGas;
+    specie          specie;
+}
+
+inertSpecie AR;
+
+// OF8: chemistryReader/foamChemistryFile/foamChemistryThermoFile were removed.
+// The species list and per-species thermo/transport data are #included instead
+// (same files as the Stanford case; see 03_case/CHANGES.md).
+#include "$FOAM_CASE/constant/chemFFCM2"     // provides: species (9) [+ reactions, unused here]
+#include "$FOAM_CASE/constant/thermFFCM2"    // provides: per-species thermo + transport
+
+// ************************************************************************* //
