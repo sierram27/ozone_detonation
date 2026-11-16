@@ -22,7 +22,7 @@ The baseline reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chem
 | 0. Repo setup | done | Rules (`AGENTS.md`), README skeleton |
 | 1. Environment | done | TACC's `openfoam/8` module (intel/23.1 + impi/21.9) works through `01_environment/env.sh`; all compute goes in batch jobs (TACC AI policy) |
 | 2. Build detonationFoam v1.2 | done | `detonationFoam_V2.0` + 4 libraries built in `$WORK` (job 3727370); 12-line syntax-only patch needed for TACC's `icpx` compiler |
-| 3. Migrate Stanford case | done | `03_case/coarse_mesh_slip_of8`: 8 format-only edits + inviscid `solverType Euler` (user choice) (`03_case/CHANGES.md`); OF8 reads it and runs 20 steps with FFCM2 (9 species, 27 reactions), job 3727443 |
+| 3. Migrate Stanford case | done | `03_case/coarse_mesh_slip_of8`: 8 format-only edits + user choices: inviscid `solverType Euler`, AMR max level 2 (`03_case/CHANGES.md`); OF8 reads it and runs 20 steps with FFCM2 (9 species, 27 reactions), job 3727443 |
 | 4. ZND initialization | pending | |
 | 5. Slurm workflow | pending | |
 | 6. Smoke test | pending | |

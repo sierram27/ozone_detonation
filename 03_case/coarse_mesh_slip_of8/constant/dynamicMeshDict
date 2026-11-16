@@ -40,7 +40,7 @@ unrefineLevel   200;
 nBufferLayers   20;
 nBufferLayersR   20;
 
-maxRefinement   3;
+maxRefinement   2;   // user decision 2026-11-16 (Stanford: 3). See 03_case/CHANGES.md #10
 
 maxCells        30000000;
 
