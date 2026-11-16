@@ -1,0 +1,97 @@
+--- a/applications/solvers/detonationFoam_V2.0/fluxSchemes_improved/fluxScheme/fluxScheme.C
++++ b/applications/solvers/detonationFoam_V2.0/fluxSchemes_improved/fluxScheme/fluxScheme.C
+@@ -164,14 +164,14 @@
+     surfaceVectorField rhoUOwn(fvc::interpolate(rhoU, own_(), scheme("rhoU")));
+     surfaceVectorField rhoUNei(fvc::interpolate(rhoU, nei_(), scheme("rhoU")));
+ 
+-    surfaceVectorField UOwn = rhoUOwn/rhoOwn_();
+-    surfaceVectorField UNei = rhoUNei/rhoNei_();
++    surfaceVectorField UOwn(rhoUOwn/rhoOwn_());
++    surfaceVectorField UNei(rhoUNei/rhoNei_());
+ 
+     surfaceScalarField rPsiOwn(fvc::interpolate(rPsi, own_(), scheme("rPsi")));
+     surfaceScalarField rPsiNei(fvc::interpolate(rPsi, nei_(), scheme("rPsi")));
+     
+-    surfaceScalarField pOwn = rhoOwn_()*rPsiOwn;
+-    surfaceScalarField pNei = rhoNei_()*rPsiNei;
++    surfaceScalarField pOwn(rhoOwn_()*rPsiOwn);
++    surfaceScalarField pNei(rhoNei_()*rPsiNei);
+ 
+     surfaceScalarField cOwn(fvc::interpolate(c, own_(), scheme("c")));
+     surfaceScalarField cNei(fvc::interpolate(c, nei_(), scheme("c")));
+@@ -179,7 +179,7 @@
+     surfaceScalarField eOwn(fvc::interpolate(e, own_(), scheme("e")));
+     surfaceScalarField eNei(fvc::interpolate(e, nei_(), scheme("e")));
+ 
+-    volScalarField p = rho * rPsi;
++    volScalarField p(rho * rPsi);
+ 
+     preUpdate(p);
+     forAll(UOwn, facei)
+--- a/applications/solvers/detonationFoam_V2.0/solverTypeNS_mixtureAverage/rhoYEqn_NS_mixtureAverage.H
++++ b/applications/solvers/detonationFoam_V2.0/solverTypeNS_mixtureAverage/rhoYEqn_NS_mixtureAverage.H
+@@ -12,7 +12,7 @@
+ vk *= 0;
+ diffsh *= 0;
+ DiffError *= 0;
+-surfaceScalarField sumOfOtherSpeices = fvc::interpolate(DiffError) & mesh.Sf();
++surfaceScalarField sumOfOtherSpeices(fvc::interpolate(DiffError) & mesh.Sf());
+ 
+ forAll(Y,i)
+ {
+@@ -36,7 +36,7 @@
+ reaction->correct();
+ Qdot = reaction->Qdot();
+ volScalarField Yt(0.0*Y[0]);
+-surfaceScalarField  phiUc = fvc::interpolate(DiffError) & mesh.Sf();
++surfaceScalarField  phiUc(fvc::interpolate(DiffError) & mesh.Sf());
+ 
+ for(label i=0; i < Y.size(); i++)
+ {
+@@ -45,7 +45,7 @@
+ 		volScalarField& Yi = Y[i];
+ 		volScalarField& Xi = X[i];
+ 		volScalarField& Diffi = Diff[i];
+-		volScalarField  ThermalDiffRatio = TDRatio_H*0;
++		volScalarField  ThermalDiffRatio(TDRatio_H*0);
+ 		
+ 		if(thermalDiffusion)
+ 		{
+@@ -86,7 +86,7 @@
+ 			}
+ 		}
+ 		
+-		surfaceScalarField speicesFlux = fvc::interpolate(rho*Diffi*fvc::grad(Yi)+Yi*rho*Diffi*fvc::grad(MW)/MW+(-rho*Diff[i]*ThermalDiffRatio*fvc::grad(T)*Yi/(T*(Xi+SMALL)))-Yi*DiffError)& mesh.Sf();
++		surfaceScalarField speicesFlux(fvc::interpolate(rho*Diffi*fvc::grad(Yi)+Yi*rho*Diffi*fvc::grad(MW)/MW+(-rho*Diff[i]*ThermalDiffRatio*fvc::grad(T)*Yi/(T*(Xi+SMALL)))-Yi*DiffError)& mesh.Sf());
+ 		vk += fvc::interpolate(Hsi)*speicesFlux;
+ 		sumOfOtherSpeices += speicesFlux;
+ 		diffsh += fvc::laplacian(mixAlpha*HEi, Yi);
+--- a/applications/solvers/detonationFoam_V2.0/solverTypeNS_mixtureAverage/transport/updateTransProperties.H
++++ b/applications/solvers/detonationFoam_V2.0/solverTypeNS_mixtureAverage/transport/updateTransProperties.H
+@@ -13,7 +13,7 @@
+     X[i] = Y[i]*MW/composition.Wi(i);
+ }
+ 
+-volScalarField tmpT = log(T/TUnit);
++volScalarField tmpT(log(T/TUnit));
+ 
+ if(differentialDiffusion)
+ {
+@@ -28,7 +28,7 @@
+ 					label m = max(groupSpecies[i][0],groupSpecies[j][0]);
+ 					label n = min(groupSpecies[i][0],groupSpecies[j][0]);	
+ 					label k = Y.size()*n+m-0.5*n*(n+1);
+-					volScalarField tmpd = 1e-4 * exp(Diff1[k]+tmpT*(Diff2[k]+tmpT*(Diff3[k]+tmpT*Diff4[k]))) / (p / 101325 /pUnit);
++					volScalarField tmpd(1e-4 * exp(Diff1[k]+tmpT*(Diff2[k]+tmpT*(Diff3[k]+tmpT*Diff4[k]))) / (p / 101325 /pUnit));
+ 					forAll(groupSpecies[i],h)
+ 					{
+ 						forAll(groupSpecies[j],z)
+@@ -107,7 +107,7 @@
+ {
+ 	TDRatio_H *= 0;
+ 	TDRatio_H2 *= 0;
+-	volScalarField tmpTT = T/TUnit;
++	volScalarField tmpTT(T/TUnit);
+ 	forAll(Y,i)
+ 	{
+ 		if(Y[i].name() == "H")
