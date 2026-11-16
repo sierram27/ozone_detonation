@@ -15,6 +15,7 @@
 | 5 | `constant/chemistryProperties` | reactions came from `foamChemistryFile` | added `#include "$FOAM_CASE/constant/chemFFCM2"` | in OpenFOAM 8 the reactions are read from `chemistryProperties` |
 | 6 | `constant/chemFFCM2` | `type reversiblethirdBodyArrheniusReaction;` (4 reactions) | `type reversibleThirdBodyArrheniusReaction;` | OpenFOAM 8 spells the type name with a capital **T** (`FOAM FATAL ERROR: Unknown reaction type reversiblethirdBodyArrheniusReaction`). Only the keyword changed; every rate coefficient is untouched |
 | 7 | `system/fvSchemes` | `div(phi,Yi_h) Gauss vanLeer;` | kept, **plus** `div(rhoPhi,Yi_h) Gauss vanLeer;` | v1.2 names the species-convection term `div(rhoPhi,Yi_h)`. Without the entry it would fall back to the default `Gauss linear` (unbounded) instead of the original vanLeer |
+| 9 | `constant/solverTypeProperties` | (Stanford: viscous `detonationNSFoam_Sutherland`) | `solverType Euler;` | **Physics choice by the user (2026-11-16), not a compatibility fix.** Run inviscid: reactive Euler equations with no viscosity, heat conduction or species diffusion. Top and bottom walls are slip (inviscid) walls, which is consistent with Euler. As a side effect, the placeholder Sutherland coefficients below are no longer used. |
 | 8 | `system/fvSchemes` | `reconstruct(U) MinmodV; reconstruct(p) Minmod;` | kept, **plus** `reconstruct(rhoU) MinmodV; reconstruct(rPsi) Minmod;` | v1.2 reconstructs `rho, rhoU, rPsi, e, c` (`fluxScheme.C`) instead of `U` and `p`. Without entries, `rhoU`/`rPsi` would fall back to `linear` (no limiter). Same limiters as the original |
 
 ## Deliberately NOT changed
@@ -24,7 +25,8 @@
 - **Time stepping:** fixed `deltaT 1e-9`, `adjustTimeStep no`, `endTime 2e-4`, `writeInterval 1e-6`.
 - **`fvSolution`** (identical to the v1.2 tutorial), **`chemistryProperties`** solver settings (seulex, absTol 1e-9, relTol 1e-6, DLB load balancing), and **`combustionProperties`** (laminar).
 - **FFCM2 data** in `chemFFCM2`/`thermFFCM2`: 9 species, **27 reactions** (21 Arrhenius, 4 third-body, 2 Troe fall-off).
-- **Sutherland transport coefficients** in `thermFFCM2`: every species has the same placeholder `As = 1.67e-6, Ts = 170` (commented "possibly unused"). **They are used** by `NS_Sutherland` for viscosity and conductivity. Kept to match what Stanford ran. ⚠️ Revisit before trusting viscous/diffusive physics.
+- **Sutherland transport coefficients** in `thermFFCM2`: every species has the same placeholder `As = 1.67e-6, Ts = 170` (commented "possibly unused"). **They are used** by `NS_Sutherland` for viscosity and conductivity. Kept to match what Stanford ran. Since change #9 (`solverType Euler`) they are **not used**. ⚠️ Revisit them if a viscous solver type is used again.
+- The Step-3 check run (job 3727443) used `NS_Sutherland`. Euler mode is verified in the smoke test (Step 6).
 - **Initial fields in `0/`:** these are uniform placeholders. The real initial condition comes from the ZND scripts (Step 4).
 - Unused files from the Stanford folder (FFCM1/Li-2007 mechanisms, `*_1D` dictionaries, `setFieldsDict`, `funkySetFieldsDict`, the PBS script `submit_2D_AR_H2_O2_new.js`, converter scripts) are kept for reference.
 

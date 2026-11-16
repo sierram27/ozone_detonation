@@ -16,8 +16,10 @@ FoamFile
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 // New in detonationFoam v1.2. Selects the equations solved.
-// The Stanford case ran detonationNSFoam_Sutherland (v1.0), so we use NS_Sutherland.
-solverType  NS_Sutherland;   // options: Euler; NS_Sutherland; NS_mixtureAverage
+// The Stanford case ran detonationNSFoam_Sutherland (v1.0). By the user's decision
+// (2026-11-16) this baseline is run INVISCID: reactive Euler equations, with no
+// viscosity, heat conduction or species diffusion. See 03_case/CHANGES.md (#9).
+solverType  Euler;           // options: Euler; NS_Sutherland; NS_mixtureAverage
 
 // The run stops when the "leading shock" (furthest cell with p > 101425 Pa, hard-coded)
 // reaches this x [m]. The domain ends at x = 0.5 m, so 1.0 (the solver's default) never
