@@ -36,7 +36,8 @@ NP=$SLURM_NTASKS                                   # number of MPI ranks = subdo
 
 source ~/ozone_detonation/01_environment/env.sh    # OpenFOAM 8 + our detonationFoam build
 
-INIT=$SCRATCH/ozone_detonation/init_case           # ZND-initialized case from Step 4
+INIT=$SCRATCH/ozone_detonation/init_case           # ZND-initialized fields + mesh from Step 4
+CASE_SRC=~/ozone_detonation/03_case/coarse_mesh_slip_of8   # current case settings (repo)
 RUN=$SCRATCH/ozone_detonation/$RUN_NAME
 echo "== Job $SLURM_JOB_ID: $SLURM_JOB_NUM_NODES nodes, $NP ranks, on $(hostname) at $(date)"
 echo "== Run dir: $RUN   END_TIME=$END_TIME  WRITE_INT=$WRITE_INT"
@@ -47,11 +48,17 @@ if [ -f "$RUN/.decomposed_ok" ]; then
     cd "$RUN"
     ls -d processor0/[0-9]* | sed 's|processor0/||' | sort -g | tail -1 | xargs echo "   latest saved time:"
 else
-    echo "== [1] NEW RUN: copy initialized case from $INIT"
+    echo "== [1] NEW RUN: settings from $CASE_SRC, initial fields + mesh from $INIT"
     [ -f "$INIT/0/T" ] && [ -d "$INIT/constant/polyMesh" ] || { echo "ERROR: $INIT is not initialized (run 04_znd_init/init.slurm)"; exit 1; }
     [ -d "$RUN" ] && { echo "   removing incomplete run dir from a failed setup"; rm -rf "$RUN"; }
     mkdir -p "$RUN"; cd "$RUN"
-    cp -r "$INIT"/{0,constant,system} .
+    # Settings (constant/, system/) always come from the repo case, so later decisions
+    # (e.g. AMR level, time step) apply. Only the ZND fields 0/ and the blockMesh mesh come
+    # from init_case. (The smoke test job 3730997 copied init_case's older dictionaries and so
+    # ran with maxRefinement 3 instead of 2.)
+    cp -r "$CASE_SRC"/{constant,system} .
+    rm -rf constant/polyMesh; cp -r "$INIT"/constant/polyMesh constant/
+    cp -r "$INIT"/0 .
     # 0/Cx, 0/Cy: cell centres used only as input to the ZND scripts. They were written by
     # OpenFOAM 12 (no "version" header entry), which OpenFOAM 8's decomposePar rejects
     # (job 3730993). The solver never reads them, so the run copy drops them.
@@ -61,7 +68,9 @@ fi
 # Settings for this run (run copy only)
 # (plain sed: TACC's OpenFOAM 8 utilities have proven fragile, see 04_znd_init/README.md)
 sed -i -E "s/^endTime[[:space:]].*/endTime         $END_TIME;/; s/^writeInterval[[:space:]].*/writeInterval   $WRITE_INT;/" system/controlDict
-grep -E "^(application|startFrom|endTime|deltaT|adjustTimeStep|writeInterval)" system/controlDict | sed 's/^/   /'
+grep -E "^(application|startFrom|endTime|deltaT|adjustTimeStep|maxCo|maxDeltaT|writeInterval)" system/controlDict | sed 's/^/   /'
+grep -E "^(maxRefinement)" constant/dynamicMeshDict | sed 's/^/   /'
+grep -E "^(solverType)" constant/solverTypeProperties | sed 's/^/   /'
 
 # ---------------------------------------------------------------- [2] decompose
 if [ ! -f .decomposed_ok ]; then
@@ -94,6 +103,9 @@ grep -m1 -E "Selecting ODE solver"                     $LOG | sed 's/^/   /'
 grep -m1 -E "solverType ="                             $LOG | sed 's/^/   /'
 echo "   time steps completed: $(grep -c '^Time = ' $LOG)"
 grep '^Time = ' $LOG | tail -1 | sed 's/^/   last /'
+grep '^deltaT = ' $LOG | tail -1 | sed 's/^/   last /'
+grep 'Max Courant Number' $LOG | awk '{ if ($NF > m) m = $NF } END { print "   max Courant number over the run:", m }'
+grep 'Max Courant Number' $LOG | tail -1 | sed 's/^/   last /'
 grep -E "^Refined|^Unrefined" $LOG | tail -1 | sed 's/^/   /'
 grep -E "min/max\(p\)" $LOG | tail -1 | sed 's/^/   /'
 grep -E "min/max\(T\)" $LOG | tail -1 | sed 's/^/   /'

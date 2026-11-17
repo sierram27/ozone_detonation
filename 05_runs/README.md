@@ -20,7 +20,7 @@ scancel <jobid>                                           # stop a job
 ## What the script does
 | Stage | What happens | Why |
 |---|---|---|
-| 1. setup / restart | **New run:** copy `$SCRATCH/ozone_detonation/init_case` into `$SCRATCH/ozone_detonation/<RUN_NAME>` and delete `0/Cx`, `0/Cy`. **Restart:** if the marker file `.decomposed_ok` exists, keep everything. | `Cx`/`Cy` are only inputs to the ZND scripts. They were written by OpenFOAM 12, and OpenFOAM 8 refuses them (see "Problems" below). |
+| 1. setup / restart | **New run:** `constant/` and `system/` come from the repo case `03_case/coarse_mesh_slip_of8` (current settings). Only `0/` (ZND fields) and `constant/polyMesh` come from `$SCRATCH/ozone_detonation/init_case`. Then `0/Cx`, `0/Cy` are deleted. **Restart:** if the marker file `.decomposed_ok` exists, keep everything. | Taking settings from the repo makes later decisions apply (see Problem 4). `Cx`/`Cy` are only inputs to the ZND scripts. They were written by OpenFOAM 12, and OpenFOAM 8 refuses them (see "Problems" below). |
 | run settings | `endTime` and `writeInterval` are set with `sed` on the run copy | The case in the repo is never edited |
 | 2. decompose | `decomposePar` with `simple`, `(16 NY 1)` with NY = ranks/16. 96 ranks gives `(16 6 1)`, about 62 × 20 cells per rank | Stanford used `simple (16 8 1)` with 128 ranks; this uses the same method with fewer pieces. A marker file is written on success. |
 | 3. solver | `ibrun detonationFoam_V2.0 -parallel` with `timeout` set to 4 min before the Slurm limit | `ibrun` is TACC's MPI launcher. The time guard lets the summary always run and the job end cleanly. |
@@ -40,11 +40,11 @@ scancel <jobid>                                           # stop a job
 | Inviscid physics as chosen | `solverType = Euler` |
 | FFCM2 read | `StandardChemistryModel: Number of species = 9 and reactions = 27` |
 | DLBFoam load-balanced chemistry active | `method loadBalanced;`, `Selecting ODE solver seulex` |
-| AMR works in parallel | `Selecting dynamicFvMesh dynamicRefineFvMesh2D`; cells grew from 120 000 to about 199 500 |
+| AMR works in parallel | `Selecting dynamicFvMesh dynamicRefineFvMesh2D`; cells grew from 120 000 to about 199 500. ⚠️ **It refined to level 3, not the chosen 2** (Problem 4) |
 | Many steps | **1819 steps** (t = 1.819 µs at 1 ns each). Stopped by our time guard (exit 124) |
 | No crash | 0 FATAL / floating-point exception / NaN lines. FPE trapping was on. The MPI "BAD TERMINATION" banners all say `KILLED BY SIGNAL: 15` (96 ranks), which is the TERM signal from our time guard, not a crash. |
 | Output written | `processor*/0, 5e-07, 1e-06, 1.5e-06`, each with p, T, U, rho, 9 species, `maxp`, `cellLevel`, `Qdot` |
-| Speed | about **0.82 s per step** with about 200 k cells on 96 cores (1483 s for 1819 steps) |
+| Speed | about **0.82 s per step** with about 200 k cells on 96 cores (1483 s for 1819 steps), at fixed 1 ns. The solver's Courant number was about 0.03 (finest cells 0.0625 mm) |
 
 ### Physics: NOT yet validated
 These are only observations:
@@ -59,6 +59,8 @@ These are only observations:
 - **The propagation test is the next step:** track the leading-shock position over at least about 20 µs, compare the speed with D_CJ = 1616 m/s, and check the `maxp` record for cellular structure.
 
 ### Cost outlook (measured, not guessed)
+> **Superseded:** after this test the user chose Courant number 0.1 (`03_case/CHANGES.md` #11), and the AMR level is now really 2. Both make steps larger. New costs come from the next run.
+
 At about 0.82 s/step on 2 nodes, the original `endTime = 2e-4` (200 000 steps of 1 ns) would take about **46 h on 2 nodes, or about 90 SU**, and longer if AMR adds cells. Options to discuss before any long run:
 - a shorter end time
 - more nodes (needs approval; scaling not yet measured)
@@ -68,6 +70,8 @@ At about 0.82 s/step on 2 nodes, the original `endTime = 2e-4` (200 000 steps of
 1. **`decomposePar` stopped on `0/Cy`** (job 3730993): `FOAM FATAL IO ERROR: keyword version is undefined in dictionary ".../0/Cy"`. The file was written by OpenFOAM 12, whose header omits `version`. **Fix:** the run copy deletes `0/Cx` and `0/Cy`, which the solver never reads.
 2. **A failed setup left empty `processor*` folders,** which the first version of the script would have taken for a restart. **Fix:** restart only when the `.decomposed_ok` marker exists, otherwise rebuild the run directory.
 3. **Summary false alarms:** the FPE banner `sigFpe : Enabling floating point exception trapping` was counted as an error, and every per-processor line of `decomposePar` was printed. **Fix:** tighter greps, plus a count of MPI kill signals (15 = our guard).
+
+4. **The smoke test ran with `maxRefinement 3`** (80 272 level-3 cells at 1.5 µs) although the user had chosen 2. **Cause:** the script copied all dictionaries from `init_case`, which was built (2026-11-16 14:27 CST) before the AMR change was committed (14:37 CST). **Fix:** new runs take `constant/` and `system/` from the repo case and only `0/` and the mesh from `init_case`. The job output now prints `maxRefinement`, `solverType`, `adjustTimeStep` and `maxCo`. The smoke run directory is therefore not continued.
 
 ## Where things are
 - Run: `$SCRATCH/ozone_detonation/smoke/` (342 MB; purged after 10 days)
