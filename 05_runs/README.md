@@ -87,7 +87,7 @@ Run with `sbatch --export=ALL,RUN_NAME=smoke2 smoke.slurm`: a fresh run from the
 
 **Why this happens:** in `solverTypeEuler.H` each step runs `detoCellular.H` (choose Δt from the last Co), then `runTime++`, then `mesh.update()` (AMR), then `calculateDt.H` (measure Co). So Δt is chosen before the mesh is refined. When cells are split, the step that is already sized for the old, larger cells runs on cells half (or a quarter) the size. Part of the measured jump may also come from how fluxes are mapped onto new faces. This is the solver's design, not a setting.
 
-**Options (user decision pending):**
+**Decision (user, 2026-11-17): option A**, `maxDeltaT 9e-9` (`03_case/CHANGES.md` #12). Not yet tested in a run. The options considered were:
 - `maxDeltaT` of about 9e-9 s, which keeps Δt at the level-2 value and would prevent the startup spike
 - a lower `maxCo`
 - a code change to measure Co after the AMR update (changes the solver; not preferred)

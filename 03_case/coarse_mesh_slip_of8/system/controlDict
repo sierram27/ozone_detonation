@@ -57,7 +57,7 @@ adjustTimeStep  yes;   // user decision 2026-11-17 (Stanford: no, fixed deltaT 1
 useAcousticCourant yes;   // not read by detonationFoam v1.2 (kept from Stanford)
 
 maxCo           0.1;   // user decision 2026-11-17 (Stanford: 0.2, unused with fixed deltaT)
-maxDeltaT		1e-6;
+maxDeltaT       9e-9;   // user decision 2026-11-17 (Stanford: 1e-6). Caps dt near the Co=0.1 step on level-2 (0.125 mm) cells. See 03_case/CHANGES.md #12
 maxAcousticCo	0.2;
 
 functions
