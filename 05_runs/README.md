@@ -99,6 +99,47 @@ Run with `sbatch --export=ALL,RUN_NAME=smoke2 smoke.slurm`: a fresh run from the
 ### Cost outlook (from this test)
 About 90 s per simulated µs on 2 nodes, so 2e-4 s (the original endTime) is about 5 h on 2 nodes, **about 10 SU**, if cell count and Δt stay similar.
 
+## Propagation check: job 3731639 (2026-11-17), run `prop1`
+```bash
+sbatch -t 02:00:00 -J det_prop1 --export=ALL,RUN_NAME=prop1,END_TIME=1e-4,WRITE_INT=1e-6 smoke.slurm
+sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=3731639 analyze.slurm      # job 3732274
+```
+Settings: Euler, FFCM2, AMR level 2, Co 0.1, Δt ≤ 9 ns. `skx-dev`, 2 nodes, 96 ranks, 1 h 56 min, **about 3.9 SU** (plus 0.1 SU of analysis).
+The first submission (3731627) was cancelled by the system (`CANCELLED by 0`) before the script started. It was resubmitted unchanged.
+
+### Software and numerics: PASSED
+- 12 408 steps to **t = 66.4 µs** (then stopped by the time guard, exit 124; all 96 ranks got signal 15). 0 FATAL / FPE / NaN.
+- Δt about 7.2 ns at Co ≈ 0.1. 1043 of 10 673 steps (about 10%) had Co > 0.1, the one step after each AMR update. **Only one step had Co > 0.3 (max 0.39)**, versus 0.87 before the `maxDeltaT` cap.
+- Cells steady at about 153 k (level 0/1/2 = 117 628 / 781 / 34 828). AMR follows the front and the cell count does not grow.
+- 67 snapshots (every 1 µs), 4.8 GB in `$SCRATCH/ozone_detonation/prop1`.
+
+### Physics: consistent with a CJ cellular detonation (not yet a full validation)
+**Shock speed** (from the solver's `Leading shock location`, `results/prop1/shock_speed.png`):
+
+| Measure | Speed | vs D_CJ = 1616 m/s |
+|---|---|---|
+| Line fit, 25 µs to end | **1590 m/s** | **−1.6 %** |
+| Whole run, 54.75 → 158.81 mm in 66.4 µs | 1568 m/s | −3.0 % (includes start-up) |
+| 2 µs windows after 25 µs | 1406–1715 m/s (std 74) | oscillates around CJ |
+
+The speed oscillates with a period of **about 18 µs** (peaks at about 10, 28 and 46 µs), which is about 29 mm of travel. Each peak follows a triple-point collision: the front is briefly overdriven and then decays. This is the normal behaviour of a cellular detonation. A slightly sub-CJ mean (1–3 %) is common for 2D inviscid simulations at moderate resolution.
+
+**Cellular structure** (`results/prop1/fields_final.png`, `maxp_zoom.png`, `maxp_spectra.png`):
+- `maxp` shows clear **triple-point tracks** that cross and form diamond-shaped cells, with dark collision spots at the walls (x ≈ 112 mm at y = 0, x ≈ 135 mm at y = 60 mm) and inside the channel.
+- At 66 µs the front has **2 triple points**, at y ≈ 22 and 52 mm, i.e. **2 cells across the 60 mm channel (cell width ≈ 30 mm)**. The transverse spectrum of log(maxp) for x = 80–154 mm peaks at **30 mm**.
+- The longitudinal spectrum peaks at about 37 mm. The window is only 74 mm long, so the next possible values are 25 and 74 mm, which makes this estimate coarse. The 18 µs speed period (about 29 mm) is a second estimate of the distance between collisions.
+- The p and T fields show transverse waves on the front and unburned pockets / vortices behind it (the T "mushrooms" at x ≈ 100–130 mm).
+
+**Caveats (what this does NOT yet show):**
+1. **The cell width is not independent of the initial condition.** The ZND front was a sinusoid of wavelength 30 mm (two periods in 60 mm), so 2 cells across the channel may be partly imposed by the start-up. Testing it needs a different initial perturbation (for example one period, or random noise) and a check of whether 30 mm reappears.
+2. **Literature value to confirm:** this mixture and channel (2H₂+O₂+7Ar, 6.67 kPa, 298 K, 6 cm) match classic numerical studies (as I recall, Oran et al. 1998, Combust. Flame), which report about 2 cells across 6 cm (λ ≈ 3 cm). **This reference still needs to be checked** before it is cited.
+3. Resolution is about 12 cells per induction length (AMR level 2). A level-3 comparison would show how much the 1.6 % speed deficit and the track sharpness depend on resolution.
+4. 66 µs is only about 2 cell lengths after start-up. A longer run would show whether the pattern is stable.
+
+### Analysis scripts
+- `analyze.slurm` (1 node, ≤ 20 min, about 0.05 SU): `reconstructParMesh` (needed because AMR changed the mesh; the first try, job 3732270, failed in `reconstructPar` with `cannot find file ".../pointProcAddressing"`), then `reconstructPar` of maxp/p/T/cellLevel, then OpenFOAM 12 cell centres, then `analyze_prop.py`.
+- `analyze_prop.py`: shock x(t) and D(t) from the solver log; maxp/p/T maps on a 0.125 mm grid; spectra of log(maxp) for the cell size; `prop_summary.json`.
+
 ## Problems found and fixed
 1. **`decomposePar` stopped on `0/Cy`** (job 3730993): `FOAM FATAL IO ERROR: keyword version is undefined in dictionary ".../0/Cy"`. The file was written by OpenFOAM 12, whose header omits `version`. **Fix:** the run copy deletes `0/Cx` and `0/Cy`, which the solver never reads.
 2. **A failed setup left empty `processor*` folders,** which the first version of the script would have taken for a restart. **Fix:** restart only when the `.decomposed_ok` marker exists, otherwise rebuild the run directory.
