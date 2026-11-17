@@ -66,6 +66,39 @@ At about 0.82 s/step on 2 nodes, the original `endTime = 2e-4` (200 000 steps of
 - more nodes (needs approval; scaling not yet measured)
 - `adjustTimeStep yes` with `maxCo 0.2`. The current 1 ns step is far below the stability limit, but changing it departs from Stanford's setup.
 
+## Smoke test 2: job 3731474 (2026-11-17), with AMR level 2 and Courant number 0.1
+Run with `sbatch --export=ALL,RUN_NAME=smoke2 smoke.slurm`: a fresh run from the ZND fields with the current repo settings. Setup: `skx-dev`, 2 nodes, 96 ranks. Wall time 4:06, so **about 0.14 SU**.
+
+### Software check: PASSED
+| Check | Evidence |
+|---|---|
+| Settings really used | job output: `adjustTimeStep yes`, `maxCo 0.1`, `maxRefinement 2`, `solverType Euler` |
+| AMR level ≤ 2 | `cellLevel` at 2 µs: levels 0/1/2 = 5182 / 803 / 33876 cells, **none at level 3** |
+| Reached end time | `Time = 2e-06` after **357 steps**; solver exit code 0 (normal end) |
+| No crash | 0 FATAL / FPE / NaN lines |
+| Output | `processor*/0, 5e-07, 1e-06, 1.5e-06, 2e-06` |
+| Speed | 180 s for 357 steps = **0.5 s/step**, about 152 k cells. That is **about 90 s of wall time per simulated µs**, about 7× faster than smoke test 1 |
+
+### How the Courant number behaves
+`Co` is the solver's convective Courant number (`03_case/CHANGES.md` #11). Out of 357 steps:
+- **Most steps sit at 0.09–0.10**, with the time step around 7–9 ns.
+- **Once every 10 steps (`refineInterval 10`) it jumps for one step** to about 0.15–0.25 (32 steps > 0.15). Then the solver cuts Δt to about 3 ns and ramps back up over about 8 steps.
+- **One step reached Co = 0.87** (t = 0.15–0.17 µs). Early on, much of the front was still on 0.5 mm cells, so Δt had grown to 19.6 ns. The next AMR update refined the front to 0.125 mm and that step ran at 4× the intended Courant number. It did not crash.
+
+**Why this happens:** in `solverTypeEuler.H` each step runs `detoCellular.H` (choose Δt from the last Co), then `runTime++`, then `mesh.update()` (AMR), then `calculateDt.H` (measure Co). So Δt is chosen before the mesh is refined. When cells are split, the step that is already sized for the old, larger cells runs on cells half (or a quarter) the size. Part of the measured jump may also come from how fluxes are mapped onto new faces. This is the solver's design, not a setting.
+
+**Options (user decision pending):**
+- `maxDeltaT` of about 9e-9 s, which keeps Δt at the level-2 value and would prevent the startup spike
+- a lower `maxCo`
+- a code change to measure Co after the AMR update (changes the solver; not preferred)
+
+### Physics: NOT yet validated
+- Max p is 432 kPa and max T is 2699 K at 2 µs.
+- The solver prints `Leading shock location` every step (cells with p > 101 425 Pa; our vN spike is 174 kPa, so this works): **0.05475 m → 0.05819 m** over the 2 µs. That is about 1.7 km/s, but over only 3.4 mm (about 27 cells), during the start-up transient, so it is not a speed measurement.
+
+### Cost outlook (from this test)
+About 90 s per simulated µs on 2 nodes, so 2e-4 s (the original endTime) is about 5 h on 2 nodes, **about 10 SU**, if cell count and Δt stay similar.
+
 ## Problems found and fixed
 1. **`decomposePar` stopped on `0/Cy`** (job 3730993): `FOAM FATAL IO ERROR: keyword version is undefined in dictionary ".../0/Cy"`. The file was written by OpenFOAM 12, whose header omits `version`. **Fix:** the run copy deletes `0/Cx` and `0/Cy`, which the solver never reads.
 2. **A failed setup left empty `processor*` folders,** which the first version of the script would have taken for a restart. **Fix:** restart only when the `.decomposed_ok` marker exists, otherwise rebuild the run directory.
