@@ -1,18 +1,118 @@
 # ozone_detonation
 
-This project runs 2D H2–O2–Ar detonation simulations with **detonationFoam v1.2 (OpenFOAM 8)** on **TACC Stampede3**. The aim is to study later how ozone affects detonation.
+This project runs 2D H2–O2–Ar detonation simulations with **detonationFoam v1.2 (OpenFOAM 8)** on **TACC Stampede3**. It is the baseline for a later study of how ozone affects detonation ([`docs/future_ozone.md`](docs/future_ozone.md)).
 
-The baseline reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chemistry/2D_Ar_H2_O2/ffcm2/coarse_mesh_slip` (FFCM2 chemistry) and his ZND initialization scripts (`Wang/nn_chemistry/ZND_Init/`).
+It reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chemistry/2D_Ar_H2_O2/ffcm2/coarse_mesh_slip` (FFCM2 chemistry) and his ZND initialization scripts (`Wang/nn_chemistry/ZND_Init/`). Changes are kept to what OpenFOAM 8 needs, plus the user decisions listed below.
+
+## The case at a glance
+| Item | Value |
+|---|---|
+| Mixture | 2H₂ + O₂ + 7Ar (X = 0.2 / 0.1 / 0.7), 6670 Pa, 298 K |
+| Chemistry | FFCM2 H₂/Ar: 9 species, 27 reactions; DLBFoam load-balanced, seulex (absTol 1e-9, relTol 1e-6) |
+| Equations | inviscid reactive Euler (`solverType Euler`), Kurganov flux |
+| Domain | 0.5 × 0.06 m, 1000 × 120 base cells (0.5 mm); AMR up to 2 levels (0.125 mm) |
+| Boundaries | left inlet / right outlet zeroGradient; top/bottom slip walls; 2D (`empty` front/back) |
+| Time step | adaptive, Courant number 0.1, Δt ≤ 9 ns |
+| Initial condition | 1D ZND profile behind a sinusoidal front x = 0.05 + 0.005 sin(4πy/0.06) m |
+
+## Results so far
+| Check | Result | Where |
+|---|---|---|
+| ZND / CJ (SDToolbox + Cantera) | D_CJ = 1616 m/s; vN spike 174.5 kPa, 1900 K; induction length 1.56 mm | `04_znd_init/` |
+| Software: parallel run (96 ranks) | runs cleanly; FFCM2, DLB, AMR, Euler all active; no FATAL/FPE/NaN | `05_runs/` (jobs 3731474, 3731639) |
+| **Physics: propagation, 66 µs** | **D = 1590 m/s (−1.6 % vs CJ)**, oscillating ±7 % as a cellular front | `05_runs/results/prop1/` |
+| Physics: cellular structure | triple-point tracks in `maxp`; about 2 cells across 60 mm (λ ≈ 30 mm) | same |
+
+**Not yet validated:**
+- **The 30 mm cell width equals the initial perturbation wavelength,** so it may be imposed by the start-up. A run with a different initial front would test it.
+- **The literature comparison still has to be checked.** This mixture and channel match classic studies of 2H₂+O₂+7Ar at 6.67 kPa, which report about 2 cells across 6 cm.
+- **Resolution is modest:** about 12 cells per induction length.
+
+## Reproduce from scratch
+Run each command on Stampede3 unless it says otherwise. **All computing goes in batch jobs** (TACC AI policy). Login nodes are for git, `sbatch` and reading logs only. Allocation `TG-MCH260175`; every job below is `skx-dev`.
+
+```bash
+# 0. Log in (your Mac). Password + Duo; the SSH config shares one connection.
+stampede                      # alias -> ~/.ssh/scripts/stampede.exp, or: ssh stampede3
+
+# 1. This repo in $HOME (the Slurm scripts expect ~/ozone_detonation)
+git clone https://github.com/sierram27/ozone_detonation.git ~/ozone_detonation    # or rsync from your Mac
+
+# 2. Sources (login node, download only)
+mkdir -p $WORK/src && cd $WORK/src
+git clone -b detonationFoam_V1.2_OF8 https://github.com/JieSun-pku/detonationFoam.git   # used: 04239c9
+git clone https://github.com/drryjoh/stanford_collaboration.git                          # used: 8439738
+
+# 3. Python environment for the ZND scripts (see 04_znd_init/README.md for why each pin)
+module load python/3.12.11
+python3 -m venv $WORK/venvs/znd && source $WORK/venvs/znd/bin/activate
+pip install cantera==3.1.0 numpy scipy "pandas==2.2.3" matplotlib
+mkdir -p $WORK/src/SDToolbox && cd $WORK/src/SDToolbox
+curl -o SDToolbox.zip https://shepherd.caltech.edu/EDL/PublicResources/sdt/SDToolbox.zip && unzip SDToolbox.zip && rm SDToolbox.zip
+echo $WORK/src/SDToolbox/SDToolbox/Python3 > $(python -c "import site;print(site.getsitepackages()[0])")/sdtoolbox.pth
+
+# 4. Build detonationFoam v1.2 (1 node, ≈10 min). Log ends "BUILD STATUS: SUCCESS"
+cd ~/ozone_detonation/02_build && sbatch build.slurm
+
+# 5. (optional) case check: mesh + 20 serial steps (1 core, ≈10 min)
+cd ~/ozone_detonation/03_case && sbatch check_case.slurm
+
+# 6. ZND initial condition -> $SCRATCH/ozone_detonation/init_case (1 node, ≈7 min). Log ends with 15/15 PASS
+cd ~/ozone_detonation/04_znd_init && sbatch init.slurm
+
+# 7. Smoke test: 2 nodes / 96 ranks, to 2 µs (≈4 min, ≈0.15 SU)
+cd ~/ozone_detonation/05_runs && sbatch --export=ALL,RUN_NAME=smoke2 smoke.slurm
+
+# 8. Propagation run: 2 nodes, 2 h (≈4 SU) -> about 66 µs
+sbatch -t 02:00:00 -J det_prop1 --export=ALL,RUN_NAME=prop1,END_TIME=1e-4,WRITE_INT=1e-6 smoke.slurm
+#    continue it later: resubmit with the same RUN_NAME and a later END_TIME
+
+# 9. Analysis: shock speed, maxp cells, plots (1 node, ≈3 min)
+sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=<job id of step 8> analyze.slurm
+```
+Monitor with `squeue -u $USER`. Read progress with `tail -f <name>_<jobid>.log` and `tail -f $SCRATCH/ozone_detonation/<run>/log.detonationFoam.<jobid>`. **Ask for approval before any job with more than 2 nodes or longer than 30 min** (see `AGENTS.md`).
+
+**Software used:** OpenFOAM 8 (TACC module `openfoam/8`, with `intel/23.1` + `impi/21.9`, loaded by `01_environment/env.sh`). OpenFOAM 12 (TACC module) is used only to write cell centres. Python 3.12.11, Cantera 3.1.0, pandas 2.2.3, numpy 2.5.5, scipy 1.18.1.
+
+**Storage:** sources, build and venv in `$WORK`; runs in `$SCRATCH` (**purged after 10 days**); logs and analysis copied to `$WORK/ozone_detonation/`.
+
+## Decisions that differ from the Stanford case
+Every edit is listed with before/after in [`03_case/CHANGES.md`](03_case/CHANGES.md). Format-only fixes for OpenFOAM 8 / v1.2 are #1–#8. User decisions:
+
+| # | Decision | Date |
+|---|---|---|
+| 9 | Inviscid: `solverType Euler` (Stanford: viscous NS-Sutherland) | 2026-11-16 |
+| 10 | AMR max level 2 (Stanford: 3) | 2026-11-16 |
+| 11 | Adaptive time step, Courant number 0.1 (Stanford: fixed Δt = 1 ns) | 2026-11-17 |
+| 12 | `maxDeltaT 9e-9` to limit Courant overshoot after AMR updates | 2026-11-17 |
+
+Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemistry solver tolerances, the ZND scripts.
+
+## Troubleshooting (problems met and how they were fixed)
+| Symptom | Cause | Fix | Details |
+|---|---|---|---|
+| `ambiguous conversion … tmp<GeometricField>` in 12 lines | TACC's `icpx` compiler is stricter | syntax-only patch `T x(expr);` | `02_build/` |
+| `./Allwmake: Permission denied` | stored without the execute bit | `sh ./Allwmake` | `02_build/` |
+| `Unknown reaction type reversiblethirdBodyArrheniusReaction` | OF8 spells it `ThirdBody` | capital T (4 places) | `03_case/CHANGES.md` #6 |
+| Every function object crashes (`OSHA1stream`) | TACC's OF8 build | use TACC's OF12 `foamPostProcess` for cell centres; **no function objects in runs** | `04_znd_init/` |
+| pandas `delim_whitespace` error | removed in pandas 3 | pin pandas 2.2.3 | `04_znd_init/` |
+| `module load X \| tail` does nothing | pipe = subshell | never pipe `module load` | `04_znd_init/` |
+| `decomposePar`: `keyword version is undefined … 0/Cy` | OF12 header in Cx/Cy | run copy deletes `0/Cx`, `0/Cy` | `05_runs/` |
+| Run used AMR level 3 | dictionaries copied from an old `init_case` | runs take `constant/`, `system/` from the repo | `05_runs/` |
+| One step at Co = 0.87 | solver picks Δt before AMR refines | `maxDeltaT 9e-9` (now max 0.39) | `05_runs/` |
+| `reconstructPar`: `cannot find … pointProcAddressing` | AMR changed the mesh | `reconstructParMesh` first | `05_runs/analyze.slurm` |
+| MPI `BAD TERMINATION … SIGNAL 15` at the end of a run | our time guard stopping the solver | expected. Any other signal is a crash | `05_runs/` |
+| Job `CANCELLED by 0` before starting | system/node problem | resubmit | `05_runs/` |
 
 ## Where things are
 | Directory | What it holds |
 |---|---|
-| `01_environment/` | Connecting to Stampede3, TACC policies, modules, directories |
-| `02_build/` | Building detonationFoam v1.2 against TACC's OpenFOAM 8 |
-| `03_case/` | The migrated Stanford case, plus `CHANGES.md` listing every edit |
-| `04_znd_init/` | How the detonation is initialized from a 1D ZND solution |
-| `05_runs/` | Slurm scripts, the smoke test, monitoring, restart |
-| `docs/` | Future work, such as ozone |
+| `01_environment/` | Connecting to Stampede3, TACC policies, modules, `env.sh` |
+| `02_build/` | Building detonationFoam v1.2 against TACC's OpenFOAM 8; compiler patch |
+| `03_case/` | The migrated case `coarse_mesh_slip_of8/` and `CHANGES.md` |
+| `04_znd_init/` | ZND initialization: background, workflow, checks |
+| `05_runs/` | Run, restart and analysis scripts; smoke and propagation results |
+| `docs/` | Future work: ozone |
 
 `AGENTS.md` holds the working rules for AI agents on this project.
 
@@ -20,10 +120,12 @@ The baseline reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chem
 | Step | Status | Notes |
 |---|---|---|
 | 0. Repo setup | done | Rules (`AGENTS.md`), README skeleton |
-| 1. Environment | done | TACC's `openfoam/8` module (intel/23.1 + impi/21.9) works through `01_environment/env.sh`; all compute goes in batch jobs (TACC AI policy) |
-| 2. Build detonationFoam v1.2 | done | `detonationFoam_V2.0` + 4 libraries built in `$WORK` (job 3727370); 12-line syntax-only patch needed for TACC's `icpx` compiler |
-| 3. Migrate Stanford case | done | `03_case/coarse_mesh_slip_of8`: 8 format-only edits + user choices: inviscid `solverType Euler`, AMR max level 2, Courant number 0.1 with Δt ≤ 9 ns (`03_case/CHANGES.md`); OF8 reads it and runs 20 steps with FFCM2 (9 species, 27 reactions), job 3727443 |
-| 4. ZND initialization | done | Dr. Johnson's 4 ZND scripts run unmodified (job 3727629); D_CJ = 1616 m/s, vN spike 174.5 kPa / 1900 K, induction length 1.56 mm; 15/15 checks pass; OF8 reads the fields. Cell centres come from TACC's OF12 (OF8 function objects are broken on TACC) |
-| 5. Slurm workflow | done | `05_runs/smoke.slurm`: copy init case → `decomposePar` simple (16 6 1) → `ibrun detonationFoam_V2.0 -parallel` with time guard → log summary → logs to `$WORK`; restart by resubmitting with a later `END_TIME` |
-| 6. Smoke test | software done; physics pending | Job 3730997, 96 ranks, 0.9 SU: 1819 steps to 1.82 µs, Euler + FFCM2 (9/27) + DLB `loadBalanced` + AMR (→ 200 k cells), no FATAL/FPE/NaN, fields saved. 0.82 s/step. ⚠️ Ran at AMR level 3 (stale init_case dictionaries; fixed). Rerun job 3731474 with AMR 2 + Co 0.1 (`CHANGES.md` #11): 357 steps to 2 µs, 0.14 SU, no errors, max level 2; Co ≈ 0.1 except one-step spikes after each AMR update (max 0.87 once). About 10 SU for the full 200 µs. **Propagation (job 3731639, 3.9 SU):** 66 µs, D = 1590 m/s (−1.6 % vs CJ), oscillating as a cellular front; maxp shows triple-point tracks, about 2 cells across 60 mm (≈ 30 mm, but this equals the initial perturbation wavelength). Plots in `05_runs/results/prop1/` |
-| 7. Reproducible README | pending | |
+| 1. Environment | done | TACC's `openfoam/8` module (intel/23.1 + impi/21.9) through `01_environment/env.sh`; all compute in batch jobs |
+| 2. Build detonationFoam v1.2 | done | `detonationFoam_V2.0` + 4 libraries (job 3727370); 12-line syntax patch for `icpx` |
+| 3. Migrate Stanford case | done | 8 format-only edits + user decisions #9–#12; OF8 reads it, 20 steps with FFCM2 (job 3727443) |
+| 4. ZND initialization | done | Stanford scripts unmodified (job 3727629); D_CJ = 1616 m/s; 15/15 checks pass |
+| 5. Slurm workflow | done | `05_runs/smoke.slurm`: setup → decompose → `ibrun` with time guard → summary → restart; `analyze.slurm` |
+| 6. Smoke + propagation | software done; physics partly | Smoke 3731474 (AMR 2, Co 0.1): clean. Propagation 3731639: 66 µs, D = 1590 m/s (−1.6 %), cellular tracks. Cell width not yet independently confirmed |
+| 7. Reproducible README | done | This file + `docs/future_ozone.md` |
+
+**Compute used so far:** about 6 SU of TG-MCH260175.
