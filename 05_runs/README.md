@@ -149,5 +149,6 @@ The speed oscillates with a period of **about 18 µs** (peaks at about 10, 28 an
 
 ## Where things are
 - Run: `$SCRATCH/ozone_detonation/smoke/` (342 MB; purged after 10 days)
-- Logs and dictionaries: `$WORK/ozone_detonation/runs/smoke/`
+- Logs and dictionaries: `$WORK/ozone_detonation/runs/<run>/`
+- **Kept snapshot of `prop1` at 66.4 µs:** `$WORK/ozone_detonation/runs/prop1/snapshot_6.6e-05/` (94 MB). It holds `processor*/6.6e-05` (all fields, 96 pieces; 3360 files, checked equal to the source), `constant/`, `system/`, `.decomposed_ok`, the solver log, and the reconstructed `6.6e-05/` (maxp, p, T, cellLevel, cell centres). To restart from it: copy the folder to `$SCRATCH/ozone_detonation/prop1` and resubmit `smoke.slurm` with `RUN_NAME=prop1` and a later `END_TIME`.
 - Script output: `~/ozone_detonation/05_runs/det_smoke_<jobid>.log` (not in git)
