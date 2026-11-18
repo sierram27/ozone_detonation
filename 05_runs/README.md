@@ -136,6 +136,40 @@ The speed oscillates with a period of **about 18 µs** (peaks at about 10, 28 an
 3. Resolution is about 12 cells per induction length (AMR level 2). A level-3 comparison would show how much the 1.6 % speed deficit and the track sharpness depend on resolution.
 4. 66 µs is only about 2 cell lengths after start-up. A longer run would show whether the pattern is stable.
 
+## Propagation run continued to 200 µs (2026-11-17/18), run `prop1`
+`prop1` was continued from its saves with the same settings (restart via `.decomposed_ok`, `END_TIME=2e-4`, `WRITE_INT=1e-6`), submitted from `$SCRATCH/ozone_detonation/logs`:
+
+| Job | Wall limit | Time span | Steps | Max Co | Errors | Ended by |
+|---|---|---|---|---|---|---|
+| 3731639 | 2 h | 0 → 66.4 µs | 12 408 | 0.39 | 0 | time guard |
+| 3732550 | 2 h | 66 → 145.0 µs | 13 286 | 0.33 | 0 | time guard |
+| 3733283 | 1 h | 145 → 185.3 µs | 6 710 | 0.31 | 0 | time guard |
+| 3734119 | 30 min | 185 → **200.0 µs** | 2 576 | 0.30 | 0 | reached endTime (exit 0) |
+
+Each restart recomputes from the last 1 µs save. Six other submissions were cancelled by the system at 2:02 (Problem 5).
+```bash
+sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=3731639:3732550:3733283:3734119,KEEP_SNAPSHOT=1 analyze.slurm   # job 3734187
+```
+Results: `results/prop1_200us/` (shock speed, fields over the whole channel, maxp zoom and spectra, `prop_summary.json`).
+
+### Software and numerics: PASSED
+- 0 FATAL / FPE / NaN in all four logs. Courant number about 0.1, max 0.39 over the whole run.
+- About 150 k cells throughout (level 0/1/2 = 117 828 / 775 / 31 652 at 200 µs).
+- At 200 µs: p 6.67–240 kPa, T 298–2941 K. The front is at x = 375.7 mm, still 124 mm from the outlet.
+
+### Physics: speed matches CJ; cellular pattern still evolving
+| Measure | Speed | vs D_CJ = 1616 m/s |
+|---|---|---|
+| Line fit, 25 → 200 µs | **1615 m/s** | **−0.03 %** |
+| Line fit, last 100 µs | 1622 m/s | +0.4 % |
+| Whole run, 54.75 → 375.69 mm | 1605 m/s | −0.7 % (includes start-up) |
+| 2 µs windows after 25 µs | 1406–1726 m/s (std 54) | oscillates around CJ |
+
+- **Speed:** the −1.6 % found at 66 µs was the start-up. Over the longer record the mean speed equals D_CJ. After about 60 µs the oscillations are smaller (about 1540–1725 m/s).
+- **Cells (`maxp`):** triple-point tracks are visible over the whole 80–370 mm region. Downstream of about 150 mm, the pattern changes from the regular start-up cells (2 across, 30 mm) to **larger, less regular diamonds**. The collision points along the channel centre are about 80–90 mm apart (x ≈ 183, 270, 343 mm).
+- **Spectra (80–370 mm):** across the channel, 30 mm (relative power 1.0) and 60 mm (0.81); along the channel, peak at 48 mm. The 60 mm and 48 mm contributions come from the later, larger cells.
+- **Reading:** the imposed 30 mm cells did not persist unchanged. The structure is moving towards fewer, larger cells, possibly one cell across the 60 mm channel. That supports caveat 1 above: the 30 mm at 66 µs was at least partly imposed by the initial sinusoid. **The natural cell width is not settled.** It would need a longer domain, a different initial perturbation, and/or higher resolution. The literature value (caveat 2) still has to be checked.
+
 ### Analysis scripts
 - `analyze.slurm` (1 node, ≤ 20 min, about 0.05 SU): `reconstructParMesh` (needed because AMR changed the mesh; the first try, job 3732270, failed in `reconstructPar` with `cannot find file ".../pointProcAddressing"`), then `reconstructPar` of maxp/p/T/cellLevel, then OpenFOAM 12 cell centres, then `analyze_prop.py`.
 - `analyze_prop.py`: shock x(t) and D(t) from the solver log; maxp/p/T maps on a 0.125 mm grid; spectra of log(maxp) for the cell size; `prop_summary.json`.
@@ -160,23 +194,27 @@ The speed oscillates with a period of **about 18 µs** (peaks at about 10, 28 an
    | 3732983 | 2 h | c454-021, c455-014 | `$SCRATCH` | cancelled at 2:02 |
    | 3733283 | 1 h | c455-[042-043] | `$SCRATCH` | ran 0:56 (145 → 185 µs) |
    | 3733284 | 1 h | c454-101, c455-013 | `$SCRATCH` | cancelled at 2:02 |
+   | 3734119 | 30 min | (2 nodes) | `$SCRATCH` | ran 0:22 (185 → 200 µs) |
+   | 3734177 | 20 min, **1 node** (analysis) | (1 node) | `$SCRATCH` | cancelled at 2:02 |
+   | 3734187 | 20 min, 1 node (analysis) | (1 node) | `$SCRATCH` | ran |
 
    - **Not a node problem:** the same nodes both ran and failed jobs.
    - **Not `$HOME`:** an earlier guess, disproved by 3732551 and 3732983.
-   - **Not the 2 h limit:** an earlier guess, disproved by 3733284 (1 h). So far 6 of the 9 two-node jobs with limits over 30 min failed. The 30-min jobs and the 1-node jobs never did, but the sample is small.
+   - **Not the 2 h limit, not the size:** 3733284 (1 h) and the 1-node 20-min analysis job 3734177 were cancelled too. 7 cancellations on 2026-11-17/18 in total; none of the 30-min solver jobs so far.
    - The batch step starts, yet the Slurm output file is never created, and `sacct` shows no reason or comment.
    - Each failure costs about 0.07 SU. Downstream `afterok` jobs then never start and must be cancelled.
-   - **Next:** report to TACC (draft below). Retrying blindly just repeats it about 2 times in 3.
+   - **Next:** report to TACC (draft below). Meanwhile, a cancelled job is simply resubmitted; nothing on disk changes, because the script never starts.
 
    <details><summary>TACC ticket draft</summary>
 
    > Subject: skx-dev jobs cancelled by root (uid 0) ~2 minutes after start, no output file
    >
-   > Several of my 2-node skx-dev jobs (account TG-MCH260175) were cancelled by uid 0 exactly 2:01–2:02 after starting, before the batch script produced any output (the `-o` file is never created; `sacct` shows `CANCELLED by 0`, no reason/comment). Affected: 3731627, 3732530, 3732539, 3732551, 3732983, 3733284. Identical submissions on the same or similar nodes ran normally (3731639, 3732550, 3733283). Jobs were submitted from both $HOME and $SCRATCH, with 2:00:00 and 1:00:00 limits; my 30-minute and 1-node jobs have not been affected. Is there a known launch/prolog issue or a policy that cancels these jobs? Thank you.
+   > Several of my 2-node skx-dev jobs (account TG-MCH260175) were cancelled by uid 0 exactly 2:01–2:02 after starting, before the batch script produced any output (the `-o` file is never created; `sacct` shows `CANCELLED by 0`, no reason/comment). Affected: 3731627, 3732530, 3732539, 3732551, 3732983, 3733284 (2 nodes, 1–2 h limits) and 3734177 (1 node, 20 min). Identical resubmissions ran normally (3731639, 3732550, 3733283, 3734119, 3734187). Jobs were submitted from both $HOME and $SCRATCH. Is there a known launch/prolog issue or a policy that cancels these jobs? Thank you.
    </details>
 
 ## Where things are
 - Run: `$SCRATCH/ozone_detonation/smoke/` (342 MB; purged after 10 days)
 - Logs and dictionaries: `$WORK/ozone_detonation/runs/<run>/`
 - **Kept snapshot of `prop1` at 66.4 µs:** `$WORK/ozone_detonation/runs/prop1/snapshot_6.6e-05/` (94 MB). It holds `processor*/6.6e-05` (all fields, 96 pieces; 3360 files, checked equal to the source), `constant/`, `system/`, `.decomposed_ok`, the solver log, and the reconstructed `6.6e-05/` (maxp, p, T, cellLevel, cell centres). To restart from it: copy the folder to `$SCRATCH/ozone_detonation/prop1` and resubmit `smoke.slurm` with `RUN_NAME=prop1` and a later `END_TIME`.
+- **Kept snapshot of `prop1` at 200 µs:** `$WORK/ozone_detonation/runs/prop1/snapshot_0.0002/` (95 MB; 3360 processor files, count checked equal to the source by `analyze.slurm` `KEEP_SNAPSHOT=1`). Same contents as above, plus all four solver logs. Analysis: `$WORK/ozone_detonation/runs/prop1/analysis_0.0002/`.
 - Script output: `$SCRATCH/ozone_detonation/logs/<name>_<jobid>.log` (older jobs: `~/ozone_detonation/05_runs/`; not in git)

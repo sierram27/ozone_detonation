@@ -48,6 +48,7 @@ def fit(t0, t1):
 
 D_all = (xs[-1] - xs[0]) / (t[-1] - t[0])
 D_fit25, n25 = fit(25e-6, t[-1])
+D_last100, n100 = fit(max(25e-6, t[-1] - 100e-6), t[-1])
 win = 2e-6
 edges = np.arange(t[0], t[-1] + 1e-12, win)
 tc, Dw = [], []
@@ -61,6 +62,7 @@ summary.update({
     "t_end_us": t[-1] * 1e6, "x_start_mm": xs[0] * 1e3, "x_end_mm": xs[-1] * 1e3,
     "D_mean_whole_run": D_all, "D_linear_fit_25us_to_end": D_fit25, "fit_points": n25,
     "D_fit_vs_CJ_percent": 100 * (D_fit25 / D_CJ - 1),
+    "D_linear_fit_last_100us": D_last100, "D_last100_vs_CJ_percent": 100 * (D_last100 / D_CJ - 1),
     "D_2us_windows_after_25us_min_max_std": [float(Dw[late].min()), float(Dw[late].max()), float(Dw[late].std())],
 })
 
@@ -91,7 +93,7 @@ summary.update({"cells": int(cx.size),
 
 # regular 0.125 mm grid (finest AMR cells), nearest-cell values keep the AMR detail
 dx = 0.125e-3
-x0, x1 = 0.0, 0.20
+x0, x1 = 0.0, 0.50                     # whole channel
 gx = np.arange(x0 + dx / 2, x1, dx); gy = np.arange(dx / 2, H, dx)
 GX, GY = np.meshgrid(gx, gy)
 sel = cx < x1 + 1e-3
@@ -99,7 +101,7 @@ grid = lambda v: griddata((cx[sel], cy[sel]), v[sel], (GX, GY), method="nearest"
 Gmaxp, Gp, GT = grid(maxp), grid(p), grid(T)
 
 ext = [x0 * 1e3, x1 * 1e3, 0, H * 1e3]
-fig, ax = plt.subplots(3, 1, figsize=(12, 7.5), sharex=True)
+fig, ax = plt.subplots(3, 1, figsize=(16, 7), sharex=True)
 im = ax[0].imshow(Gmaxp, origin="lower", extent=ext, cmap="Greys", norm=LogNorm(vmin=1.5e5, vmax=np.percentile(maxp, 99.9)), aspect="equal")
 ax[0].set_title(f"maxp (peak pressure history) at t = {t[-1]*1e6:.1f} µs: triple-point tracks"); fig.colorbar(im, ax=ax[0], label="Pa")
 im = ax[1].imshow(Gp / 1e3, origin="lower", extent=ext, cmap="viridis", aspect="equal")

@@ -20,11 +20,11 @@ It reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chemistry/2D_A
 |---|---|---|
 | ZND / CJ (SDToolbox + Cantera) | D_CJ = 1616 m/s; vN spike 174.5 kPa, 1900 K; induction length 1.56 mm | `04_znd_init/` |
 | Software: parallel run (96 ranks) | runs cleanly; FFCM2, DLB, AMR, Euler all active; no FATAL/FPE/NaN | `05_runs/` (jobs 3731474, 3731639) |
-| **Physics: propagation, 66 µs** | **D = 1590 m/s (−1.6 % vs CJ)**, oscillating ±7 % as a cellular front | `05_runs/results/prop1/` |
-| Physics: cellular structure | triple-point tracks in `maxp`; about 2 cells across 60 mm (λ ≈ 30 mm) | same |
+| **Physics: propagation, 200 µs** | **D = 1615 m/s (−0.03 % vs CJ)**, fit 25–200 µs; oscillating as a cellular front | `05_runs/results/prop1_200us/` |
+| Physics: cellular structure | triple-point tracks in `maxp`; 2 cells across (30 mm) after start-up, then larger, less regular cells (spectra: 30 and 60 mm) | same; 66 µs results in `results/prop1/` |
 
 **Not yet validated:**
-- **The 30 mm cell width equals the initial perturbation wavelength,** so it may be imposed by the start-up. A run with a different initial front would test it.
+- **The natural cell width is not settled.** The early 30 mm cells equal the initial perturbation wavelength, and by 200 µs the pattern has moved towards larger cells. A longer domain, a different initial front, or higher resolution would settle it.
 - **The literature comparison still has to be checked.** This mixture and channel match classic studies of 2H₂+O₂+7Ar at 6.67 kPa, which report about 2 cells across 6 cm.
 - **Resolution is modest:** about 12 cells per induction length.
 
@@ -71,11 +71,11 @@ sbatch --export=ALL,RUN_NAME=smoke2 $R/05_runs/smoke.slurm
 
 # 8. Propagation run: 2 nodes, 2 h (≈4 SU) -> about 66 µs
 sbatch -t 02:00:00 -J det_prop1 --export=ALL,RUN_NAME=prop1,END_TIME=1e-4,WRITE_INT=1e-6 $R/05_runs/smoke.slurm
-#    continue it later: resubmit with the same RUN_NAME and a later END_TIME. Chain several 2 h jobs:
+#    continue it later: resubmit with the same RUN_NAME and a later END_TIME (200 µs was reached with 4 jobs). Chain several 2 h jobs:
 #    j1=$(sbatch --parsable ... | tail -1); sbatch -d afterok:$j1 ...   (tail -1: TACC prints a banner)
 
 # 9. Analysis: shock speed, maxp cells, plots (1 node, ≈3 min)
-sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=<job id of step 8> $R/05_runs/analyze.slurm
+sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=<solver job ids, colon-separated>,KEEP_SNAPSHOT=1 $R/05_runs/analyze.slurm
 ```
 Monitor with `squeue -u $USER`. Read progress with `tail -f $SCRATCH/ozone_detonation/logs/<name>_<jobid>.log` and `tail -f $SCRATCH/ozone_detonation/<run>/log.detonationFoam.<jobid>`. **Ask for approval before any job with more than 2 nodes or longer than 30 min** (see `AGENTS.md`).
 
@@ -109,7 +109,7 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | One step at Co = 0.87 | solver picks Δt before AMR refines | `maxDeltaT 9e-9` (now max 0.39) | `05_runs/` |
 | `reconstructPar`: `cannot find … pointProcAddressing` | AMR changed the mesh | `reconstructParMesh` first | `05_runs/analyze.slurm` |
 | MPI `BAD TERMINATION … SIGNAL 15` at the end of a run | our time guard stopping the solver | expected. Any other signal is a crash | `05_runs/` |
-| Job `CANCELLED by 0` at 2:01–2:02 after start, no output file, no reason recorded (6 jobs on 2026-11-17) | **unknown, system side.** Not node-specific, not `$HOME`, not the 2 h limit (a 1 h job too); never seen on 30-min or 1-node jobs | resubmit; reported to TACC (ticket draft in `05_runs/README.md`) | `05_runs/` |
+| Job `CANCELLED by 0` at 2:01–2:02 after start, no output file, no reason recorded (7 jobs on 2026-11-17/18) | **unknown, system side.** Not node-specific, not `$HOME`, not the wall limit or job size (also a 1-node 20-min job) | resubmit (nothing on disk changes); ticket draft for TACC in `05_runs/README.md` | `05_runs/` |
 
 ## Where things are
 | Directory | What it holds |
@@ -132,7 +132,7 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | 3. Migrate Stanford case | done | 8 format-only edits + user decisions #9–#12; OF8 reads it, 20 steps with FFCM2 (job 3727443) |
 | 4. ZND initialization | done | Stanford scripts unmodified (job 3727629); D_CJ = 1616 m/s; 15/15 checks pass |
 | 5. Slurm workflow | done | `05_runs/smoke.slurm`: setup → decompose → `ibrun` with time guard → summary → restart; `analyze.slurm` |
-| 6. Smoke + propagation | software done; physics partly | Smoke 3731474 (AMR 2, Co 0.1): clean. Propagation 3731639: 66 µs, D = 1590 m/s (−1.6 %), cellular tracks. Cell width not yet independently confirmed |
+| 6. Smoke + propagation | software done; physics partly | Smoke 3731474 (AMR 2, Co 0.1): clean. Propagation `prop1` to 200 µs (4 jobs): D = 1615 m/s (−0.03 %), cellular tracks. Cell width not settled |
 | 7. Reproducible README | done | This file + `docs/future_ozone.md` |
 
-**Compute used so far:** about 6 SU of TG-MCH260175.
+**Compute used so far:** about 13 SU of TG-MCH260175 (including about 0.5 SU of system-cancelled jobs).

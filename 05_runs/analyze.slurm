@@ -13,6 +13,7 @@
 #   3. analyze_prop.py: shock speed vs time, maxp cell pattern, spectra -> PNG + JSON
 # Usage:  sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=3731639 analyze.slurm
 #         LOGJOB may list several solver jobs of one continued run, in order: LOGJOB=3731639:3732550:3732551
+#         KEEP_SNAPSHOT=1 also copies the latest time (restartable) to $WORK/ozone_detonation/runs/$RUN_NAME/
 
 set -u
 # Submit from $SCRATCH (e.g. $SCRATCH/ozone_detonation/logs), never from $HOME (TACC guidance).
@@ -46,9 +47,21 @@ echo "== [3] analyze_prop.py"
 module load python/3.12.11 > /dev/null 2>&1
 source $WORK/venvs/znd/bin/activate
 export MPLBACKEND=Agg
-OUT=$RUN/analysis; mkdir -p $OUT
+OUT=$RUN/analysis_$LAST; mkdir -p $OUT
 LOGS=$(echo "$LOGJOB" | tr ':' '\n' | sed 's/^/log.detonationFoam./' | paste -sd, -)
 python ~/ozone_detonation/05_runs/analyze_prop.py "$LOGS" "$LAST" $OUT || exit 1
 
-SAVE=$WORK/ozone_detonation/runs/$RUN_NAME/analysis; mkdir -p $SAVE; cp $OUT/* $SAVE/
+SAVE=$WORK/ozone_detonation/runs/$RUN_NAME/analysis_$LAST; mkdir -p $SAVE; cp $OUT/* $SAVE/
+
+# [4] optional (KEEP_SNAPSHOT=1): keep the latest time in $WORK ($SCRATCH is purged after 10 days).
+#     Enough to restart the run or re-analyse it: processor*/$LAST, constant, system, marker, logs,
+#     and the reconstructed $LAST. File counts of source and copy are compared.
+if [ "${KEEP_SNAPSHOT:-0}" = 1 ]; then
+  SNAP=$WORK/ozone_detonation/runs/$RUN_NAME/snapshot_$LAST; mkdir -p $SNAP
+  echo "== [4] snapshot -> $SNAP"
+  for d in processor*; do mkdir -p $SNAP/$d; cp -r $d/$LAST $SNAP/$d/; done
+  cp -r constant system .decomposed_ok "$LAST" log.detonationFoam.* $SNAP/
+  a=$(ls -d processor*/$LAST | xargs -I{} find {} -type f | wc -l); b=$(cd $SNAP && ls -d processor*/$LAST | xargs -I{} find {} -type f | wc -l)
+  echo "   processor files: source $a, copy $b $([ "$a" = "$b" ] && echo OK || echo MISMATCH)"; du -sh $SNAP
+fi
 echo "== END $(date); results in $OUT and $SAVE"
