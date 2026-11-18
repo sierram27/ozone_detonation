@@ -158,19 +158,21 @@ The speed oscillates with a period of **about 18 µs** (peaks at about 10, 28 an
    | 3732550 | 2 h | c454-[003,081] | `$SCRATCH` | ran 1:56 |
    | 3732551 | 2 h | c454-[021,032] | `$SCRATCH` | cancelled at 2:02 |
    | 3732983 | 2 h | c454-021, c455-014 | `$SCRATCH` | cancelled at 2:02 |
+   | 3733283 | 1 h | c455-[042-043] | `$SCRATCH` | ran 0:56 (145 → 185 µs) |
+   | 3733284 | 1 h | c454-101, c455-013 | `$SCRATCH` | cancelled at 2:02 |
 
    - **Not a node problem:** the same nodes both ran and failed jobs.
    - **Not `$HOME`:** an earlier guess, disproved by 3732551 and 3732983.
-   - **Only the 2 h jobs failed** (5 of 7), never the short ones, but the sample is small.
+   - **Not the 2 h limit:** an earlier guess, disproved by 3733284 (1 h). So far 6 of the 9 two-node jobs with limits over 30 min failed. The 30-min jobs and the 1-node jobs never did, but the sample is small.
    - The batch step starts, yet the Slurm output file is never created, and `sacct` shows no reason or comment.
    - Each failure costs about 0.07 SU. Downstream `afterok` jobs then never start and must be cancelled.
-   - **Next:** report to TACC (draft below), and test whether shorter (1 h) jobs avoid it.
+   - **Next:** report to TACC (draft below). Retrying blindly just repeats it about 2 times in 3.
 
    <details><summary>TACC ticket draft</summary>
 
    > Subject: skx-dev jobs cancelled by root (uid 0) ~2 minutes after start, no output file
    >
-   > Several of my 2-node skx-dev jobs (account TG-MCH260175) were cancelled by uid 0 exactly 2:01–2:02 after starting, before the batch script produced any output (the `-o` file is never created; `sacct` shows `CANCELLED by 0`, no reason/comment). Affected: 3731627, 3732530, 3732539, 3732551, 3732983. Identical resubmissions on the same nodes ran normally (3731639, 3732550, 1 h 56 min each). Jobs were submitted from both $HOME and $SCRATCH; all affected jobs requested a 2:00:00 limit. Is there a known launch/prolog issue or a policy that cancels these jobs? Thank you.
+   > Several of my 2-node skx-dev jobs (account TG-MCH260175) were cancelled by uid 0 exactly 2:01–2:02 after starting, before the batch script produced any output (the `-o` file is never created; `sacct` shows `CANCELLED by 0`, no reason/comment). Affected: 3731627, 3732530, 3732539, 3732551, 3732983, 3733284. Identical submissions on the same or similar nodes ran normally (3731639, 3732550, 3733283). Jobs were submitted from both $HOME and $SCRATCH, with 2:00:00 and 1:00:00 limits; my 30-minute and 1-node jobs have not been affected. Is there a known launch/prolog issue or a policy that cancels these jobs? Thank you.
    </details>
 
 ## Where things are

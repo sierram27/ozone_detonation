@@ -109,7 +109,7 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | One step at Co = 0.87 | solver picks Δt before AMR refines | `maxDeltaT 9e-9` (now max 0.39) | `05_runs/` |
 | `reconstructPar`: `cannot find … pointProcAddressing` | AMR changed the mesh | `reconstructParMesh` first | `05_runs/analyze.slurm` |
 | MPI `BAD TERMINATION … SIGNAL 15` at the end of a run | our time guard stopping the solver | expected. Any other signal is a crash | `05_runs/` |
-| Job `CANCELLED by 0` at 2:01–2:02 after start, no output file, no reason recorded (5 jobs on 2026-11-17) | **unknown, system side.** Not node-specific; also happens when submitted from `$SCRATCH`. So far only 2 h jobs, never the 30 min ones | resubmit; reported to TACC (ticket draft in `05_runs/README.md`) | `05_runs/` |
+| Job `CANCELLED by 0` at 2:01–2:02 after start, no output file, no reason recorded (6 jobs on 2026-11-17) | **unknown, system side.** Not node-specific, not `$HOME`, not the 2 h limit (a 1 h job too); never seen on 30-min or 1-node jobs | resubmit; reported to TACC (ticket draft in `05_runs/README.md`) | `05_runs/` |
 
 ## Where things are
 | Directory | What it holds |
