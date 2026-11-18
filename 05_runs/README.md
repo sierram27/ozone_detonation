@@ -208,9 +208,22 @@ Results: `results/prop1_200us/` (shock speed, fields over the whole channel, max
 
    <details><summary>TACC ticket draft</summary>
 
-   > Subject: skx-dev jobs cancelled by root (uid 0) ~2 minutes after start, no output file
+   > Subject: Stampede3 skx-dev jobs cancelled by uid 0 about 2 minutes after start, no output file
    >
-   > Several of my 2-node skx-dev jobs (account TG-MCH260175) were cancelled by uid 0 exactly 2:01–2:02 after starting, before the batch script produced any output (the `-o` file is never created; `sacct` shows `CANCELLED by 0`, no reason/comment). Affected: 3731627, 3732530, 3732539, 3732551, 3732983, 3733284 (2 nodes, 1–2 h limits) and 3734177 (1 node, 20 min). Identical resubmissions ran normally (3731639, 3732550, 3733283, 3734119, 3734187). Jobs were submitted from both $HOME and $SCRATCH. Is there a known launch/prolog issue or a policy that cancels these jobs? Thank you.
+   > On Stampede3, several of my `skx-dev` jobs (allocation TG-MCH260175) were cancelled by uid 0 at 2:01–2:02 after they started. The batch script never ran: the Slurm output file (`-o`) is never created, and `sacct` shows `CANCELLED by 0` with no reason or comment.
+   >
+   > Cancelled jobs (2026-11-17/18):
+   > - 3731627, 3732530, 3732539, 3732551, 3732983: 2 nodes, 2 h limit
+   > - 3733284: 2 nodes, 1 h limit
+   > - 3734177: 1 node, 20 min limit
+   >
+   > Identical resubmissions ran normally, sometimes on the same nodes: 3731639, 3732550, 3733283, 3734119 and 3734187.
+   >
+   > The cancelled jobs ran on various nodes, and I submitted them from both $HOME and $SCRATCH. Two of them (3732551 and 3733284) were waiting on another job (`-d afterok`). The others were submitted on their own.
+   >
+   > Is there a known launch or prolog problem, or a policy that would cancel these jobs? Is there anything I should change in how I submit them?
+   >
+   > Thank you.
    </details>
 
 ## Where things are
