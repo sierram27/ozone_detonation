@@ -31,7 +31,7 @@ It reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chemistry/2D_A
 ## Reproduce from scratch
 Run each command on Stampede3 unless it says otherwise. **All computing goes in batch jobs** (TACC AI policy). Login nodes are for git, `sbatch` and reading logs only. Allocation `TG-MCH260175`; every job below is `skx-dev`.
 
-**Submit every job from `$SCRATCH`, never from `$HOME`.** The scripts live in `~/ozone_detonation`, but `sbatch` is run from `$SCRATCH/ozone_detonation/logs`. Then the job's working directory and its output file are in `$SCRATCH`. Three jobs submitted from `$HOME` were killed by the system after about 2 minutes (`CANCELLED by 0`, no output file).
+**Submit every job from `$SCRATCH`, never from `$HOME`** (TACC guidance, `AGENTS.md` rule 14). The scripts live in `~/ozone_detonation`, but `sbatch` is run from `$SCRATCH/ozone_detonation/logs`, so the job's working directory and output file are in `$SCRATCH`.
 
 ```bash
 # 0. Log in (your Mac). Password + Duo; the SSH config shares one connection.
@@ -109,7 +109,7 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | One step at Co = 0.87 | solver picks Δt before AMR refines | `maxDeltaT 9e-9` (now max 0.39) | `05_runs/` |
 | `reconstructPar`: `cannot find … pointProcAddressing` | AMR changed the mesh | `reconstructParMesh` first | `05_runs/analyze.slurm` |
 | MPI `BAD TERMINATION … SIGNAL 15` at the end of a run | our time guard stopping the solver | expected. Any other signal is a crash | `05_runs/` |
-| Job `CANCELLED by 0` after about 2 min, no output file (3731627, 3732530, 3732539) | submitted from `$HOME`: working dir and output file on `/home1` | submit from `$SCRATCH/ozone_detonation/logs` (see above); not node-specific | `05_runs/` |
+| Job `CANCELLED by 0` at 2:01–2:02 after start, no output file, no reason recorded (5 jobs on 2026-11-17) | **unknown, system side.** Not node-specific; also happens when submitted from `$SCRATCH`. So far only 2 h jobs, never the 30 min ones | resubmit; reported to TACC (ticket draft in `05_runs/README.md`) | `05_runs/` |
 
 ## Where things are
 | Directory | What it holds |

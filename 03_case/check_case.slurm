@@ -14,8 +14,7 @@
 # to put a reacting H2/O2/Ar mixture plus hot regions in the domain.
 
 set -u
-# Submit from $SCRATCH (e.g. $SCRATCH/ozone_detonation/logs), never from $HOME: jobs whose
-# working dir / output file were in $HOME were killed by the system at ~2 min (2026-11-17).
+# Submit from $SCRATCH (e.g. $SCRATCH/ozone_detonation/logs), never from $HOME (TACC guidance).
 case "${SLURM_SUBMIT_DIR:-}" in "$HOME"|"$HOME"/*) echo "WARNING: submitted from \$HOME ($SLURM_SUBMIT_DIR); submit from \$SCRATCH instead";; esac
 source ~/ozone_detonation/01_environment/env.sh
 CASE_SRC=~/ozone_detonation/03_case/coarse_mesh_slip_of8

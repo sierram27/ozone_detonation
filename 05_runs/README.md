@@ -4,7 +4,7 @@
 The same script does the smoke test and longer runs, and it can continue (restart) a run.
 
 ## How to use it
-Run all of these on a Stampede3 login node **from `$SCRATCH/ozone_detonation/logs`** (`mkdir -p` it first), never from `$HOME`. Jobs submitted from `$HOME` were killed by the system at about 2 min, before writing anything (see Problem 5). The commands below assume `S=~/ozone_detonation/05_runs`:
+Run all of these on a Stampede3 login node **from `$SCRATCH/ozone_detonation/logs`** (`mkdir -p` it first), never from `$HOME` (TACC guidance). The commands below assume `S=~/ozone_detonation/05_runs`:
 ```bash
 sbatch $S/smoke.slurm                                     # smoke test: run "smoke", 2 nodes, until 2 us
 sbatch --export=ALL,END_TIME=4e-6 $S/smoke.slurm          # continue the same run to 4 us (restart)
@@ -146,7 +146,32 @@ The speed oscillates with a period of **about 18 µs** (peaks at about 10, 28 an
 3. **Summary false alarms:** the FPE banner `sigFpe : Enabling floating point exception trapping` was counted as an error, and every per-processor line of `decomposePar` was printed. **Fix:** tighter greps, plus a count of MPI kill signals (15 = our guard).
 
 4. **The smoke test ran with `maxRefinement 3`** (80 272 level-3 cells at 1.5 µs) although the user had chosen 2. **Cause:** the script copied all dictionaries from `init_case`, which was built (2026-11-16 14:27 CST) before the AMR change was committed (14:37 CST). **Fix:** new runs take `constant/` and `system/` from the repo case and only `0/` and the mesh from `init_case`. The job output now prints `maxRefinement`, `solverType`, `adjustTimeStep` and `maxCo`. The smoke run directory is therefore not continued.
-5. **Jobs `CANCELLED by 0` after about 2 minutes with no output file** (3731627, 3732530, 3732539; 0.07 SU each). They ran on different nodes, so this was not a bad node. What they had in common was the working directory and the Slurm output file in `$HOME` (`/home1`), because they were submitted from `~/ozone_detonation/05_runs`. That also breaks `AGENTS.md` rule 14. **Fix:** submit from `$SCRATCH/ozone_detonation/logs`. The next job (3732550) started normally, even on c454-003, one of the nodes that had been suspected. Every script now prints a warning if it was submitted from `$HOME`.
+5. **Jobs `CANCELLED by 0` at 2:01–2:02 after starting, with no output file and no recorded reason.** Unresolved; looks like a system-side problem. Facts (2026-11-17, all `skx-dev`, 2 nodes):
+
+   | Job | Wall limit | Nodes | Submitted from | Result |
+   |---|---|---|---|---|
+   | 3730997, 3731474 | 30 min | various | `$HOME` | ran |
+   | 3731627 | 2 h | c454-[002-003] | `$HOME` | cancelled at 2:01 |
+   | 3731639 | 2 h | c454-[002-003] | `$HOME` | ran 1:56 |
+   | 3732530 | 2 h | c454-[003,012] | `$HOME` | cancelled at 2:02 |
+   | 3732539 | 2 h | c454-002, c455-014 | `$HOME` | cancelled at 2:01 |
+   | 3732550 | 2 h | c454-[003,081] | `$SCRATCH` | ran 1:56 |
+   | 3732551 | 2 h | c454-[021,032] | `$SCRATCH` | cancelled at 2:02 |
+   | 3732983 | 2 h | c454-021, c455-014 | `$SCRATCH` | cancelled at 2:02 |
+
+   - **Not a node problem:** the same nodes both ran and failed jobs.
+   - **Not `$HOME`:** an earlier guess, disproved by 3732551 and 3732983.
+   - **Only the 2 h jobs failed** (5 of 7), never the short ones, but the sample is small.
+   - The batch step starts, yet the Slurm output file is never created, and `sacct` shows no reason or comment.
+   - Each failure costs about 0.07 SU. Downstream `afterok` jobs then never start and must be cancelled.
+   - **Next:** report to TACC (draft below), and test whether shorter (1 h) jobs avoid it.
+
+   <details><summary>TACC ticket draft</summary>
+
+   > Subject: skx-dev jobs cancelled by root (uid 0) ~2 minutes after start, no output file
+   >
+   > Several of my 2-node skx-dev jobs (account TG-MCH260175) were cancelled by uid 0 exactly 2:01–2:02 after starting, before the batch script produced any output (the `-o` file is never created; `sacct` shows `CANCELLED by 0`, no reason/comment). Affected: 3731627, 3732530, 3732539, 3732551, 3732983. Identical resubmissions on the same nodes ran normally (3731639, 3732550, 1 h 56 min each). Jobs were submitted from both $HOME and $SCRATCH; all affected jobs requested a 2:00:00 limit. Is there a known launch/prolog issue or a policy that cancels these jobs? Thank you.
+   </details>
 
 ## Where things are
 - Run: `$SCRATCH/ozone_detonation/smoke/` (342 MB; purged after 10 days)

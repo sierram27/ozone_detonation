@@ -15,8 +15,7 @@
 #         copy of 0/ + ZND CSV + plots in $WORK/ozone_detonation/znd_init_<jobid>
 
 set -u
-# Submit from $SCRATCH (e.g. $SCRATCH/ozone_detonation/logs), never from $HOME: jobs whose
-# working dir / output file were in $HOME were killed by the system at ~2 min (2026-11-17).
+# Submit from $SCRATCH (e.g. $SCRATCH/ozone_detonation/logs), never from $HOME (TACC guidance).
 case "${SLURM_SUBMIT_DIR:-}" in "$HOME"|"$HOME"/*) echo "WARNING: submitted from \$HOME ($SLURM_SUBMIT_DIR); submit from \$SCRATCH instead";; esac
 source ~/ozone_detonation/01_environment/env.sh          # OpenFOAM 8
 module load python/3.12.11 > /dev/null 2>&1               # Python for the ZND scripts

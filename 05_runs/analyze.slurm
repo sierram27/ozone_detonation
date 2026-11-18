@@ -15,8 +15,7 @@
 #         LOGJOB may list several solver jobs of one continued run, in order: LOGJOB=3731639:3732550:3732551
 
 set -u
-# Submit from $SCRATCH (e.g. $SCRATCH/ozone_detonation/logs), never from $HOME: jobs whose
-# working dir / output file were in $HOME were killed by the system at ~2 min (2026-11-17).
+# Submit from $SCRATCH (e.g. $SCRATCH/ozone_detonation/logs), never from $HOME (TACC guidance).
 case "${SLURM_SUBMIT_DIR:-}" in "$HOME"|"$HOME"/*) echo "WARNING: submitted from \$HOME ($SLURM_SUBMIT_DIR); submit from \$SCRATCH instead";; esac
 RUN_NAME=${RUN_NAME:-prop1}
 LOGJOB=${LOGJOB:?set LOGJOB = job id of the solver run}
