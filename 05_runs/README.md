@@ -4,14 +4,14 @@
 The same script does the smoke test and longer runs, and it can continue (restart) a run.
 
 ## How to use it
-Run all of these on a Stampede3 login node from `~/ozone_detonation/05_runs`:
+Run all of these on a Stampede3 login node **from `$SCRATCH/ozone_detonation/logs`** (`mkdir -p` it first), never from `$HOME`. Jobs submitted from `$HOME` were killed by the system at about 2 min, before writing anything (see Problem 5). The commands below assume `S=~/ozone_detonation/05_runs`:
 ```bash
-sbatch smoke.slurm                                        # smoke test: run "smoke", 2 nodes, until 2 us
-sbatch --export=ALL,END_TIME=4e-6 smoke.slurm             # continue the same run to 4 us (restart)
-sbatch --export=ALL,RUN_NAME=prop1,END_TIME=2e-5 -t 02:00:00 smoke.slurm   # new run, longer wall time
-sbatch --export=ALL,RECONSTRUCT=1 smoke.slurm             # also merge the latest time into one case
+sbatch $S/smoke.slurm                                     # smoke test: run "smoke", 2 nodes, until 2 us
+sbatch --export=ALL,END_TIME=4e-6 $S/smoke.slurm          # continue the same run to 4 us (restart)
+sbatch --export=ALL,RUN_NAME=prop1,END_TIME=2e-5 -t 02:00:00 $S/smoke.slurm   # new run, longer wall time
+sbatch --export=ALL,RECONSTRUCT=1 $S/smoke.slurm          # also merge the latest time into one case
 squeue -u $USER                                           # is it queued / running?
-tail -f det_smoke_<jobid>.log                             # the script's own progress
+tail -f det_smoke_<jobid>.log                             # the script's own progress (in the logs dir)
 tail -f $SCRATCH/ozone_detonation/smoke/log.detonationFoam.<jobid>   # the solver log
 scancel <jobid>                                           # stop a job
 ```
@@ -146,9 +146,10 @@ The speed oscillates with a period of **about 18 µs** (peaks at about 10, 28 an
 3. **Summary false alarms:** the FPE banner `sigFpe : Enabling floating point exception trapping` was counted as an error, and every per-processor line of `decomposePar` was printed. **Fix:** tighter greps, plus a count of MPI kill signals (15 = our guard).
 
 4. **The smoke test ran with `maxRefinement 3`** (80 272 level-3 cells at 1.5 µs) although the user had chosen 2. **Cause:** the script copied all dictionaries from `init_case`, which was built (2026-11-16 14:27 CST) before the AMR change was committed (14:37 CST). **Fix:** new runs take `constant/` and `system/` from the repo case and only `0/` and the mesh from `init_case`. The job output now prints `maxRefinement`, `solverType`, `adjustTimeStep` and `maxCo`. The smoke run directory is therefore not continued.
+5. **Jobs `CANCELLED by 0` after about 2 minutes with no output file** (3731627, 3732530, 3732539; 0.07 SU each). They ran on different nodes, so this was not a bad node. What they had in common was the working directory and the Slurm output file in `$HOME` (`/home1`), because they were submitted from `~/ozone_detonation/05_runs`. That also breaks `AGENTS.md` rule 14. **Fix:** submit from `$SCRATCH/ozone_detonation/logs`. The next job (3732550) started normally, even on c454-003, one of the nodes that had been suspected. Every script now prints a warning if it was submitted from `$HOME`.
 
 ## Where things are
 - Run: `$SCRATCH/ozone_detonation/smoke/` (342 MB; purged after 10 days)
 - Logs and dictionaries: `$WORK/ozone_detonation/runs/<run>/`
 - **Kept snapshot of `prop1` at 66.4 µs:** `$WORK/ozone_detonation/runs/prop1/snapshot_6.6e-05/` (94 MB). It holds `processor*/6.6e-05` (all fields, 96 pieces; 3360 files, checked equal to the source), `constant/`, `system/`, `.decomposed_ok`, the solver log, and the reconstructed `6.6e-05/` (maxp, p, T, cellLevel, cell centres). To restart from it: copy the folder to `$SCRATCH/ozone_detonation/prop1` and resubmit `smoke.slurm` with `RUN_NAME=prop1` and a later `END_TIME`.
-- Script output: `~/ozone_detonation/05_runs/det_smoke_<jobid>.log` (not in git)
+- Script output: `$SCRATCH/ozone_detonation/logs/<name>_<jobid>.log` (older jobs: `~/ozone_detonation/05_runs/`; not in git)

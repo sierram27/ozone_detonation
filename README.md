@@ -31,6 +31,8 @@ It reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chemistry/2D_A
 ## Reproduce from scratch
 Run each command on Stampede3 unless it says otherwise. **All computing goes in batch jobs** (TACC AI policy). Login nodes are for git, `sbatch` and reading logs only. Allocation `TG-MCH260175`; every job below is `skx-dev`.
 
+**Submit every job from `$SCRATCH`, never from `$HOME`.** The scripts live in `~/ozone_detonation`, but `sbatch` is run from `$SCRATCH/ozone_detonation/logs`. Then the job's working directory and its output file are in `$SCRATCH`. Three jobs submitted from `$HOME` were killed by the system after about 2 minutes (`CANCELLED by 0`, no output file).
+
 ```bash
 # 0. Log in (your Mac). Password + Duo; the SSH config shares one connection.
 stampede                      # alias -> ~/.ssh/scripts/stampede.exp, or: ssh stampede3
@@ -51,26 +53,31 @@ mkdir -p $WORK/src/SDToolbox && cd $WORK/src/SDToolbox
 curl -o SDToolbox.zip https://shepherd.caltech.edu/EDL/PublicResources/sdt/SDToolbox.zip && unzip SDToolbox.zip && rm SDToolbox.zip
 echo $WORK/src/SDToolbox/SDToolbox/Python3 > $(python -c "import site;print(site.getsitepackages()[0])")/sdtoolbox.pth
 
+# All jobs: submit from here; Slurm output files <name>_<jobid>.log land here too
+mkdir -p $SCRATCH/ozone_detonation/logs && cd $SCRATCH/ozone_detonation/logs
+R=~/ozone_detonation
+
 # 4. Build detonationFoam v1.2 (1 node, ≈10 min). Log ends "BUILD STATUS: SUCCESS"
-cd ~/ozone_detonation/02_build && sbatch build.slurm
+sbatch $R/02_build/build.slurm
 
 # 5. (optional) case check: mesh + 20 serial steps (1 core, ≈10 min)
-cd ~/ozone_detonation/03_case && sbatch check_case.slurm
+sbatch $R/03_case/check_case.slurm
 
 # 6. ZND initial condition -> $SCRATCH/ozone_detonation/init_case (1 node, ≈7 min). Log ends with 15/15 PASS
-cd ~/ozone_detonation/04_znd_init && sbatch init.slurm
+sbatch $R/04_znd_init/init.slurm
 
 # 7. Smoke test: 2 nodes / 96 ranks, to 2 µs (≈4 min, ≈0.15 SU)
-cd ~/ozone_detonation/05_runs && sbatch --export=ALL,RUN_NAME=smoke2 smoke.slurm
+sbatch --export=ALL,RUN_NAME=smoke2 $R/05_runs/smoke.slurm
 
 # 8. Propagation run: 2 nodes, 2 h (≈4 SU) -> about 66 µs
-sbatch -t 02:00:00 -J det_prop1 --export=ALL,RUN_NAME=prop1,END_TIME=1e-4,WRITE_INT=1e-6 smoke.slurm
-#    continue it later: resubmit with the same RUN_NAME and a later END_TIME
+sbatch -t 02:00:00 -J det_prop1 --export=ALL,RUN_NAME=prop1,END_TIME=1e-4,WRITE_INT=1e-6 $R/05_runs/smoke.slurm
+#    continue it later: resubmit with the same RUN_NAME and a later END_TIME. Chain several 2 h jobs:
+#    j1=$(sbatch --parsable ... | tail -1); sbatch -d afterok:$j1 ...   (tail -1: TACC prints a banner)
 
 # 9. Analysis: shock speed, maxp cells, plots (1 node, ≈3 min)
-sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=<job id of step 8> analyze.slurm
+sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=<job id of step 8> $R/05_runs/analyze.slurm
 ```
-Monitor with `squeue -u $USER`. Read progress with `tail -f <name>_<jobid>.log` and `tail -f $SCRATCH/ozone_detonation/<run>/log.detonationFoam.<jobid>`. **Ask for approval before any job with more than 2 nodes or longer than 30 min** (see `AGENTS.md`).
+Monitor with `squeue -u $USER`. Read progress with `tail -f $SCRATCH/ozone_detonation/logs/<name>_<jobid>.log` and `tail -f $SCRATCH/ozone_detonation/<run>/log.detonationFoam.<jobid>`. **Ask for approval before any job with more than 2 nodes or longer than 30 min** (see `AGENTS.md`).
 
 **Software used:** OpenFOAM 8 (TACC module `openfoam/8`, with `intel/23.1` + `impi/21.9`, loaded by `01_environment/env.sh`). OpenFOAM 12 (TACC module) is used only to write cell centres. Python 3.12.11, Cantera 3.1.0, pandas 2.2.3, numpy 2.5.5, scipy 1.18.1.
 
@@ -102,7 +109,7 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | One step at Co = 0.87 | solver picks Δt before AMR refines | `maxDeltaT 9e-9` (now max 0.39) | `05_runs/` |
 | `reconstructPar`: `cannot find … pointProcAddressing` | AMR changed the mesh | `reconstructParMesh` first | `05_runs/analyze.slurm` |
 | MPI `BAD TERMINATION … SIGNAL 15` at the end of a run | our time guard stopping the solver | expected. Any other signal is a crash | `05_runs/` |
-| Job `CANCELLED by 0` before starting | system/node problem | resubmit | `05_runs/` |
+| Job `CANCELLED by 0` after about 2 min, no output file (3731627, 3732530, 3732539) | submitted from `$HOME`: working dir and output file on `/home1` | submit from `$SCRATCH/ozone_detonation/logs` (see above); not node-specific | `05_runs/` |
 
 ## Where things are
 | Directory | What it holds |

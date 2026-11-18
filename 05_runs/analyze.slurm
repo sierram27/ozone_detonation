@@ -12,8 +12,12 @@
 #   2. cell centres of that (AMR-refined) mesh with TACC's OpenFOAM 12 (OF8 function objects crash)
 #   3. analyze_prop.py: shock speed vs time, maxp cell pattern, spectra -> PNG + JSON
 # Usage:  sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=3731639 analyze.slurm
+#         LOGJOB may list several solver jobs of one continued run, in order: LOGJOB=3731639:3732550:3732551
 
 set -u
+# Submit from $SCRATCH (e.g. $SCRATCH/ozone_detonation/logs), never from $HOME: jobs whose
+# working dir / output file were in $HOME were killed by the system at ~2 min (2026-11-17).
+case "${SLURM_SUBMIT_DIR:-}" in "$HOME"|"$HOME"/*) echo "WARNING: submitted from \$HOME ($SLURM_SUBMIT_DIR); submit from \$SCRATCH instead";; esac
 RUN_NAME=${RUN_NAME:-prop1}
 LOGJOB=${LOGJOB:?set LOGJOB = job id of the solver run}
 source ~/ozone_detonation/01_environment/env.sh
@@ -44,7 +48,8 @@ module load python/3.12.11 > /dev/null 2>&1
 source $WORK/venvs/znd/bin/activate
 export MPLBACKEND=Agg
 OUT=$RUN/analysis; mkdir -p $OUT
-python ~/ozone_detonation/05_runs/analyze_prop.py log.detonationFoam.$LOGJOB "$LAST" $OUT || exit 1
+LOGS=$(echo "$LOGJOB" | tr ':' '\n' | sed 's/^/log.detonationFoam./' | paste -sd, -)
+python ~/ozone_detonation/05_runs/analyze_prop.py "$LOGS" "$LAST" $OUT || exit 1
 
 SAVE=$WORK/ozone_detonation/runs/$RUN_NAME/analysis; mkdir -p $SAVE; cp $OUT/* $SAVE/
 echo "== END $(date); results in $OUT and $SAVE"

@@ -2,7 +2,10 @@
 """Analyse a propagation run: shock speed vs time and the maxp (cellular) pattern.
 
 Usage (inside a batch job, from the run directory):
-    python analyze_prop.py <solver log> <time dir with maxp,p,T,cellLevel,Ccx,Ccy> <out dir>
+    python analyze_prop.py <solver log[,log2,...]> <time dir with maxp,p,T,cellLevel,Ccx,Ccy> <out dir>
+  Several comma-separated logs (a run continued over chained jobs) are merged in time order.
+  After a restart the solver recomputes from the last save, so overlapping times are taken
+  from the later log.
 
 Reads only; writes PNG plots and a JSON summary into <out dir>.
   - Shock position: the solver's own "Leading shock location" line (largest x with
@@ -25,14 +28,19 @@ summary = {}
 
 # ---------------------------------------------------------------- shock position
 t, xs = [], []
-cur = None
-with open(log_path) as f:
-    for line in f:
-        if line.startswith("Time = "):
-            cur = float(line.split()[2])
-        elif line.startswith("Leading shock location") and cur is not None:
-            t.append(cur); xs.append(float(line.split()[-2]))
+for lp in log_path.split(","):
+    lt, lx, cur = [], [], None
+    with open(lp) as f:
+        for line in f:
+            if line.startswith("Time = "):
+                cur = float(line.split()[2])
+            elif line.startswith("Leading shock location") and cur is not None:
+                lt.append(cur); lx.append(float(line.split()[-2]))
+    if lt:   # drop earlier entries that this (later) log recomputes
+        keep = [i for i, tt in enumerate(t) if tt < lt[0]]
+        t = [t[i] for i in keep] + lt; xs = [xs[i] for i in keep] + lx
 t, xs = np.array(t), np.array(xs)
+summary["logs"] = log_path.split(",")
 
 def fit(t0, t1):
     m = (t >= t0) & (t <= t1)
