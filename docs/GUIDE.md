@@ -657,6 +657,7 @@ The project's habit is to write down what was run and what came out, then commit
 | Symptom | Meaning | What to do |
 |---|---|---|
 | Asked for password, or `Permission denied (publickey,keyboard-interactive)` | the shared SSH connection ended (sleep, network change) | `stampede` again on the Mac, enter Duo |
+| `rsync: [sender] change_dir "/home1/12029/smartinez627/Documents/..." failed: No such file or directory`, after a password/token prompt | the `rsync` (or `scp`) was typed in the **Stampede3** terminal (prompt `login2.stampede3…$`). There `~` is the Stampede3 home folder, and `stampede3:` makes Stampede3 log in to itself. Nothing is copied | open a **Mac** terminal tab (⌘T; prompt shows your Mac's name) and run it there. Commands marked [Mac] always go there |
 | `CANCELLED by 0` about 2 minutes after start, **no output file at all** | system-side cancellation, cause unknown (Problem 5 in `05_runs/README.md`). Seen on 7 jobs in Nov 2026, of all sizes; a ticket is open with TACC | resubmit the same command; nothing on disk was changed. If it keeps happening, add the job numbers to the TACC ticket |
 | A dependent job stays pending with `DependencyNeverSatisfied` | the job it waited for didn't finish successfully | `scancel <jobid>`, then resubmit without `-d` |
 | `WARNING: submitted from $HOME` in the output | you forgot `cd $SCRATCH/ozone_detonation/logs` | not harmful once, but submit from `$SCRATCH` next time |
