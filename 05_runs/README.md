@@ -211,7 +211,7 @@ The goal is to run far enough for the cellular structure to settle, an estimated
 
 A local test on small synthetic files (2026-11-19) passed. It also caught a wrong front position and a corrupted fresh-gas cell, both inserted on purpose.
 
-### First recycle attempt: job 3740454 (2026-11-19, submitted by the user): FAILED at a safety check, nothing created
+### First recycle attempt: job 3740454 (2026-11-19, submitted by the user): FAILED at a safety check, nothing created; fixed
 `SRC_RUN=prop1`, `NEW_RUN=prop1_cycle1`, `skx-dev`, 1 node. It ended `FAILED` after 4 min 37 s (about 0.08 SU).
 
 **Steps that worked:**
@@ -231,12 +231,13 @@ A local test on small synthetic files (2026-11-19) passed. It also caught a wron
 - No `prop1_cycle1` folder was created. The failure came before step [3], so nothing can be run by mistake.
 - The temporary `prop1_cycle1_mapsource` is left over. A rerun deletes it first.
 
-**Proposed fix (not yet made):**
-- In `recycle_fields.py ambient`, select fresh-gas cells much more tightly: within 10⁻³ Pa and 10⁻³ K of the minimum, instead of 0.5.
-- Accept differences up to 10⁻⁶ relative, instead of 10⁻⁹.
-- Use the average of those cells.
-- Print the spread, and how many cells sit in the shock foot, so the next log shows what was excluded.
-- Then resubmit the same command.
+**Fix (2026-11-19), in `recycle_fields.py ambient`:**
+- **Narrower selection:** fresh-gas cells are those within 10⁻³ Pa and 10⁻³ K of the minimum, instead of 0.5. Cells up to 100 Pa above are counted as "shock foot" and reported.
+- **Tolerance:** uniformity is required to 10⁻⁶ relative, instead of 10⁻⁹. The fresh-gas value is the average of the selected cells.
+- **Rounding:** the average is rounded to 12 significant digits, the OpenFOAM `writePrecision`. Without this, the "cells beyond the copied region are unchanged" check would fail after `mapFields` rewrites them. That check now also uses a 10⁻⁹ relative tolerance.
+- **Logging:** the job log lists every fresh-gas value with its spread.
+- **Local test:** synthetic data reproduced this failure (one cell at 6670.486 Pa, the others 6670.0000003–6670.0000005 Pa). It now passes, with 1 cell left out as shock foot.
+- **Next:** rsync, then resubmit the same command.
 
 ## Continuation to 475 mm: how it was prepared
 `prop1_to_475mm.slurm` continues `prop1` from 200 µs (shock at 375.7 mm) until the leading shock reaches x = 0.475 m. It sets `RUN_NAME=prop1`, `WRITE_INT=1e-6`, `END_TIME=3e-4` (backstop) and `SW_LIMIT=0.475`, then runs `smoke.slurm`.

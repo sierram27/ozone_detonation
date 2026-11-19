@@ -137,6 +137,6 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | 6. Smoke + propagation | software done; physics partly | Smoke 3731474 (AMR 2, Co 0.1): clean. Propagation `prop1` to 200 µs (4 jobs): D = 1615 m/s (−0.03 %), cellular tracks. Cell width not settled |
 | 7. Reproducible README | done | This file + `docs/future_ozone.md` |
 | 8. User guide; continue `prop1` to 475 mm | done | `docs/GUIDE.md`. Job 3738975 (submitted by the user, not cancelled) stopped at 0.4751 m, t = 260.7 µs; clean. Analysis 3740049 |
-| 9. Window recycling past 0.5 m (option B, S = 0.30 m) | first recycle (job 3740454) **failed at its fresh-gas check**; fix proposed | Run folders `prop1_cycle1`, `prop1_cycle2`, … (one per 0.30 m cycle). `05_runs/recycle.slurm` + `cycle_run.slurm` + `recycle_fields.py`; change #13 in `03_case/CHANGES.md`; GUIDE part 9b. Goal: about 0.5–1 m more travel (2–4 cycles, ~9 SU each) |
+| 9. Window recycling past 0.5 m (option B, S = 0.30 m) | first recycle (job 3740454) **failed at its fresh-gas check**; check fixed, to be resubmitted | Run folders `prop1_cycle1`, `prop1_cycle2`, … (one per 0.30 m cycle). `05_runs/recycle.slurm` + `cycle_run.slurm` + `recycle_fields.py`; change #13 in `03_case/CHANGES.md`; GUIDE part 9b. Goal: about 0.5–1 m more travel (2–4 cycles, ~9 SU each) |
 
 **Compute used so far:** about 16 SU of TG-MCH260175 (including about 0.5 SU of system-cancelled jobs).

@@ -91,19 +91,31 @@ def cmd_ambient(tdir, out):
     n = len(p)
     T = values(os.path.join(tdir, "T"), n)
     pmin, Tmin = min(p), min(T)
-    cells = [i for i in range(n) if p[i] <= pmin + 0.5 and T[i] <= Tmin + 0.5]
+    # Fresh gas = cells within 1e-3 Pa and 1e-3 K of the minimum. A wider band (0.5 Pa, job 3740454)
+    # also caught cells at the foot of the numerically smeared shock (6670.49 Pa).
+    cells = [i for i in range(n) if p[i] <= pmin + 1e-3 and T[i] <= Tmin + 1e-3]
+    foot = sum(1 for i in range(n) if pmin + 1e-3 < p[i] <= pmin + 100)
     if not cells:
         sys.exit("ERROR: no fresh-gas cells found")
+    print(f"   fresh-gas cells: {len(cells)} (p within 1e-3 Pa of {pmin}, T within 1e-3 K of {Tmin}); "
+          f"left out as shock foot (up to 100 Pa above): {foot}")
     amb = {}
     for f in FIELDS:
         v = values(os.path.join(tdir, f), n)
-        ref = v[cells[0]]
-        comps = (lambda a: a) if isinstance(ref, tuple) else (lambda a: (a,))
-        for i in cells:
-            for a, b in zip(comps(v[i]), comps(ref)):
-                if abs(a - b) > 1e-9 * max(1.0, abs(b)):
-                    sys.exit(f"ERROR: fresh gas is not uniform in {f}: {v[i]} vs {ref}")
-        amb[f] = ref
+        vec = isinstance(v[cells[0]], tuple)
+        rows = [v[i] if vec else (v[i],) for i in cells]
+        mean, spread = [], 0.0
+        for c in range(len(rows[0])):
+            col = [r[c] for r in rows]
+            m = sum(col) / len(col)
+            s = max(col) - min(col)
+            if s > 1e-6 * max(1.0, abs(m)):
+                sys.exit(f"ERROR: fresh gas is not uniform in {f}: values {min(col)} .. {max(col)}")
+            spread = max(spread, s)
+            # 12 significant digits = OpenFOAM writePrecision, so the value survives being written and read back
+            mean.append(float(f"{m:.12g}"))
+        amb[f] = tuple(mean) if vec else mean[0]
+        print(f"     {f:5s} = {fmt_value(amb[f])}   (spread {spread:.2e})")
     json.dump(amb, open(out, "w"), indent=1)
     print(f"   fresh gas from {len(cells)} cells ahead of the front: p = {amb['p']} Pa, T = {amb['T']} K, "
           f"U = {amb['U']}, Y(H2, O2, AR) = {amb['H2']}, {amb['O2']}, {amb['AR']}")
@@ -159,7 +171,9 @@ def cmd_check(tdir, amb_json, nx, dxc, length, shift, offset):
         bad.append("negative mass fraction")
 
     ahead = [i for i in range(n) if x[i] > edge]
-    changed = sum(1 for i in ahead if v["p"][i] != amb["p"] or v["T"][i] != amb["T"] or v["H2"][i] != amb["H2"])
+    close = lambda a, b: abs(a - b) <= 1e-9 * max(1.0, abs(b))
+    changed = sum(1 for i in ahead if not (close(v["p"][i], amb["p"]) and close(v["T"][i], amb["T"])
+                                           and close(v["H2"][i], amb["H2"])))
     print(f"   cells beyond x = {edge:.3f} m (not copied): {len(ahead)}, of which not fresh gas: {changed}")
     if changed:
         bad.append("cells beyond the copied region were changed")
