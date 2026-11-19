@@ -239,6 +239,28 @@ A local test on small synthetic files (2026-11-19) passed. It also caught a wron
 - **Local test:** synthetic data reproduced this failure (one cell at 6670.486 Pa, the others 6670.0000003–6670.0000005 Pa). It now passes, with 1 cell left out as shock foot.
 - **Next:** rsync, then resubmit the same command.
 
+### Second recycle attempt: job 3740503 (2026-11-19): FAILED at the same check, on U; fixed
+- It ran for 39 s. Steps [1] and [2] were as before.
+- **The new selection works:** `fresh-gas cells: 14196 … left out as shock foot (up to 100 Pa above): 1469`, and p = 6670.00001 Pa (spread 9.95e-04 Pa), T = 298.0000002 K (spread 1.6e-05 K).
+- **It then stopped at U:**
+  ```
+  ERROR: fresh gas is not uniform in U: values -3.13274157528e-11 .. 3.3488050206e-05
+  ```
+- **Cause:** the fresh gas carries acoustic noise at round-off level. The size fits: a pressure ripple of 10⁻³ Pa gives u = p′/(ρc) ≈ 10⁻³ / (0.08 × 330) ≈ 4×10⁻⁵ m/s. The test allowed only 10⁻⁶ relative to max(1, |U|), and U is zero, so it allowed 10⁻⁶ m/s.
+- **Fix:** each quantity now has an allowed spread on its own physical scale:
+
+  | Quantity | Allowed spread |
+  |---|---|
+  | p | 10⁻⁶ × p (0.0067 Pa) |
+  | T | 10⁻⁶ × T (0.0003 K) |
+  | U | 10⁻³ m/s (3×10⁻⁶ of the sound speed) |
+  | maxp | 10⁻⁴ × p (0.67 Pa; only used for the soot foil) |
+  | mass fractions | 10⁻⁶ |
+
+- **Logging:** every quantity is printed with its spread, its allowed spread and ok / TOO LARGE, and all failures are listed at once.
+- **Local test:** this job's U noise now passes, and a real H2 difference of 10⁻³ still fails.
+- **About the averaged U:** the fresh gas written ahead of the front is the average, about 10⁻⁵ m/s. That is the same noise level, not a flow.
+
 ## Continuation to 475 mm: how it was prepared
 `prop1_to_475mm.slurm` continues `prop1` from 200 µs (shock at 375.7 mm) until the leading shock reaches x = 0.475 m. It sets `RUN_NAME=prop1`, `WRITE_INT=1e-6`, `END_TIME=3e-4` (backstop) and `SW_LIMIT=0.475`, then runs `smoke.slurm`.
 - **`SW_LIMIT` is new in `smoke.slurm`.** It sets `SW_position_limit` in the run copy of `constant/solverTypeProperties`. This is detonationFoam's own stop criterion: in `detonationFoam_V2.0.C`, `if (SW_position >= SW_position_limit) exit(EXIT_SUCCESS);`. It only ends the run and doesn't change the equations; the repository case keeps 1.0. The solver exits without a final save, so the last save is the previous 1 µs one.

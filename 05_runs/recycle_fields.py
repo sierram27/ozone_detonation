@@ -99,7 +99,15 @@ def cmd_ambient(tdir, out):
         sys.exit("ERROR: no fresh-gas cells found")
     print(f"   fresh-gas cells: {len(cells)} (p within 1e-3 Pa of {pmin}, T within 1e-3 K of {Tmin}); "
           f"left out as shock foot (up to 100 Pa above): {foot}")
-    amb = {}
+    # Allowed spread inside the fresh gas, on each quantity's own physical scale. The fresh gas carries
+    # round-off-level acoustic noise: job 3740503 found p spread 1e-3 Pa and |U| up to 3.3e-5 m/s
+    # (consistent: u = p'/(rho c) = 1e-3 / (0.08 * 330) = 4e-5 m/s). A relative test on U (whose value
+    # is 0) wrongly rejected that.
+    tol = {"p": 1e-6 * pmin,      # 0.0067 Pa
+           "T": 1e-6 * Tmin,      # 0.0003 K
+           "U": 1e-3,             # m/s, 3e-6 of the sound speed
+           "maxp": 1e-4 * pmin}   # 0.67 Pa; peak-pressure record, only used for the soot foil
+    amb, bad = {}, []
     for f in FIELDS:
         v = values(os.path.join(tdir, f), n)
         vec = isinstance(v[cells[0]], tuple)
@@ -108,14 +116,17 @@ def cmd_ambient(tdir, out):
         for c in range(len(rows[0])):
             col = [r[c] for r in rows]
             m = sum(col) / len(col)
-            s = max(col) - min(col)
-            if s > 1e-6 * max(1.0, abs(m)):
-                sys.exit(f"ERROR: fresh gas is not uniform in {f}: values {min(col)} .. {max(col)}")
-            spread = max(spread, s)
+            spread = max(spread, max(col) - min(col))
             # 12 significant digits = OpenFOAM writePrecision, so the value survives being written and read back
             mean.append(float(f"{m:.12g}"))
         amb[f] = tuple(mean) if vec else mean[0]
-        print(f"     {f:5s} = {fmt_value(amb[f])}   (spread {spread:.2e})")
+        t = tol.get(f, 1e-6)              # mass fractions: 1e-6 absolute
+        ok = spread <= t
+        print(f"     {f:5s} = {fmt_value(amb[f])}   (spread {spread:.2e}, allowed {t:.1e}) {'ok' if ok else 'TOO LARGE'}")
+        if not ok:
+            bad.append(f)
+    if bad:
+        sys.exit(f"ERROR: fresh gas is not uniform in {', '.join(bad)}")
     json.dump(amb, open(out, "w"), indent=1)
     print(f"   fresh gas from {len(cells)} cells ahead of the front: p = {amb['p']} Pa, T = {amb['T']} K, "
           f"U = {amb['U']}, Y(H2, O2, AR) = {amb['H2']}, {amb['O2']}, {amb['AR']}")
