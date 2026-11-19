@@ -209,7 +209,34 @@ The goal is to run far enough for the cellular structure to settle, an estimated
 - the cells beyond 0.5 − SHIFT are unchanged fresh gas
 - the leading shock (the solver's own test, p > 101 425 Pa) is between 0.5 − SHIFT − 0.05 m and 0.5 − SHIFT, e.g. 0.15–0.20 m
 
-A local test on small synthetic files (2026-11-19) passed. It also caught a wrong front position and a corrupted fresh-gas cell, both inserted on purpose. **The job has not run on Stampede3 yet.**
+A local test on small synthetic files (2026-11-19) passed. It also caught a wrong front position and a corrupted fresh-gas cell, both inserted on purpose.
+
+### First recycle attempt: job 3740454 (2026-11-19, submitted by the user): FAILED at a safety check, nothing created
+`SRC_RUN=prop1`, `NEW_RUN=prop1_cycle1`, `skx-dev`, 1 node. It ended `FAILED` after 4 min 37 s (about 0.08 SU).
+
+**Steps that worked:**
+- **[1] reconstruct:** the 260 µs save was joined into one mesh, `nCells:150174`. That matches the 150 174 cells in the analysis.
+- **[2] shift:** `shifted 303472 points by -0.3 m in x: x now -0.300000 .. 0.200000 m`. This is the expected range: the old 0–0.5 m became −0.3–0.2 m.
+
+**Where it stopped:**
+- The check that reads the fresh-gas state stopped the job:
+  ```
+  ERROR: fresh gas is not uniform in p: 6670.48609244 vs 6670.00000052
+  ```
+- **Cause: the script's test, not the simulation.** It counted any cell within 0.5 Pa of the lowest pressure as "fresh gas". That band also caught at least one cell at 6670.49 Pa. That cell's pressure is 7×10⁻⁵ above ambient, most likely right at the foot of the smeared numerical shock. The lowest pressure itself is 6670.00000052 Pa, not exactly 6670, which suggests round-off-level differences in the fresh gas.
+- The check was meant to stop the job when the fresh gas is unclear. It did that, but its selection band was too wide.
+
+**State afterwards:**
+- `prop1` is unchanged, apart from the reconstructed 260 µs files (it had these already).
+- No `prop1_cycle1` folder was created. The failure came before step [3], so nothing can be run by mistake.
+- The temporary `prop1_cycle1_mapsource` is left over. A rerun deletes it first.
+
+**Proposed fix (not yet made):**
+- In `recycle_fields.py ambient`, select fresh-gas cells much more tightly: within 10⁻³ Pa and 10⁻³ K of the minimum, instead of 0.5.
+- Accept differences up to 10⁻⁶ relative, instead of 10⁻⁹.
+- Use the average of those cells.
+- Print the spread, and how many cells sit in the shock foot, so the next log shows what was excluded.
+- Then resubmit the same command.
 
 ## Continuation to 475 mm: how it was prepared
 `prop1_to_475mm.slurm` continues `prop1` from 200 µs (shock at 375.7 mm) until the leading shock reaches x = 0.475 m. It sets `RUN_NAME=prop1`, `WRITE_INT=1e-6`, `END_TIME=3e-4` (backstop) and `SW_LIMIT=0.475`, then runs `smoke.slurm`.
