@@ -17,6 +17,7 @@ The other READMEs in this repository hold the background and the history: what w
 7. [Making the initial condition (ZND initialization)](#7-making-the-initial-condition-znd-initialization)
 8. [Running a simulation: smoke test, then a real run](#8-running-a-simulation-smoke-test-then-a-real-run)
 9. [Continuing `prop1` until the shock reaches 475 mm](#9-continuing-prop1-until-the-shock-reaches-475-mm)
+   - 9b. [Going past 0.5 m: window recycling](#9b-going-past-05-m-window-recycling-cycles-of-030-m)
 10. [Watching a job and judging whether it is healthy](#10-watching-a-job-and-judging-whether-it-is-healthy)
 11. [Analysis: shock speed and cell pattern](#11-analysis-shock-speed-and-cell-pattern)
 12. [ParaView: VTK files and pictures on your Mac](#12-paraview-vtk-files-and-pictures-on-your-mac)
@@ -438,6 +439,82 @@ tail -40 $SCRATCH/ozone_detonation/logs/det_prop1_475_<jobid>.log
 
 ---
 
+## 9b. Going past 0.5 m: window recycling (cycles of 0.30 m)
+
+**Idea:** the channel is only 0.5 m long. Each **cycle** runs until the front reaches 0.475 m. Then a short job, `recycle.slurm`:
+1. takes the last save
+2. shifts it 0.30 m to the left, so the front lands at about 0.175 m with about 0.175 m of burned gas behind it
+3. fills the rest of the channel with fresh gas
+4. starts a new run folder
+
+The soot-foil record `maxp` moves with the shift. Each cycle adds 0.30 m of travel:
+
+| Run folder | Lab distance covered | Made by |
+|---|---|---|
+| `prop1` | 0.05 → 0.475 m | done (jobs 3731639 … 3738975) |
+| `prop1_c1` | 0.475 → 0.775 m | recycle of `prop1` |
+| `prop1_c2` | 0.775 → 1.075 m | recycle of `prop1_c1` |
+| `prop1_c3` | 1.075 → 1.375 m | recycle of `prop1_c2` |
+
+**Lab position = domain position + OFFSET.** The OFFSET is in `<run folder>/recycle_info.txt` (0.30 for `prop1_c1`, 0.60 for `prop1_c2`, …). Positions printed in the solver log are **domain** positions (0–0.5 m).
+
+**What it costs the physics:**
+- Each recycle averages the 0.125 mm front cells onto 0.5 mm cells. The adaptive mesh refinement (AMR) rebuilds the fine cells within a few steps, but the lost detail stays lost.
+- Each recycle also drops the burned gas far behind the front.
+- So the soot foil just after a recycle shows the front recovering. Judge regularity on the later part of each cycle, and compare cycles with each other.
+
+**Cost per cycle:** about 190 µs of simulated time, about 4.5 h on 2 nodes, about 9 SU. That is three 2 h jobs, plus one recycle job of under 0.5 SU.
+
+**9b.1 Copy the scripts** (Part 4, **[Mac]**): the rsync command from 9.1.
+
+**9b.2 Make the next run folder**
+
+**[Stampede3]**
+```bash
+squeue -u $USER          # nothing may be running on the source run folder
+cd $SCRATCH/ozone_detonation/logs
+sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_c1 ~/ozone_detonation/05_runs/recycle.slurm
+```
+- `SRC_RUN` is the folder that has just reached 0.475 m. `NEW_RUN` is the folder to create.
+- For the next cycles, use `SRC_RUN=prop1_c1,NEW_RUN=prop1_c2`, then `SRC_RUN=prop1_c2,NEW_RUN=prop1_c3`, and so on.
+- The job takes about 10 minutes. The source run is not changed.
+- If `NEW_RUN` already exists and is complete, the job stops without touching it.
+
+**9b.3 Check the recycle job**
+
+**[Stampede3]**
+```bash
+tail -30 $SCRATCH/ozone_detonation/logs/det_recycle_<jobid>.log
+```
+What you should see:
+- `fresh gas from … cells ahead of the front: p = 6670 Pa, T = 298 K, U = (0, 0, 0)`
+- `fields mapped: 13 (expected 13)`
+- `max |sum - 1|` very small (below 1e-6)
+- `cells beyond x = 0.200 m (not copied): …, of which not fresh gas: 0`
+- `leading shock … x = 0.17… m in the domain = 0.47… m lab` (for `prop1_c1`; one OFFSET more for each later cycle)
+- `checks passed`, then `is ready`
+
+If it says `ERROR`, nothing usable was created. Send the log to someone who can look at it before going on.
+
+**9b.4 Run the cycle** (same command every time, until the cycle reaches 0.475 m)
+
+**[Stampede3]**
+```bash
+cd $SCRATCH/ozone_detonation/logs
+sbatch --export=ALL,RUN_NAME=prop1_c1 ~/ozone_detonation/05_runs/cycle_run.slurm
+```
+- Each job runs up to 2 h (at most 4 SU) and covers about 85 µs, about 0.13 m. **A cycle takes about 3 jobs.**
+- Submit the next job only after the previous one has ended.
+- The output file is `det_cycle_<jobid>.log`. Judge it as in 9.5:
+  - `solver exit code 124` with the shock below 0.475 means "out of time", so submit again.
+  - `last Leading shock location = 0.475…` means the cycle is done, so go to 9b.2 for the next cycle.
+  - `FATAL/FPE/NaN lines: 0` must hold every time.
+- `cycle_run.slurm` refuses a folder without `.decomposed_ok`. Without that safeguard, `smoke.slurm` would wipe it and restart from t = 0.
+
+**9b.5 Analysis of a cycle:** as in Part 11, with `RUN_NAME=prop1_c1` and that cycle's job numbers. The speed is unaffected by the offset. For the full soot foil, place each cycle's `maxp` at its OFFSET.
+
+---
+
 ## 10. Watching a job and judging whether it is healthy
 
 **Is it queued or running?**
@@ -692,7 +769,9 @@ scp 'stampede3:/work2/12029/smartinez627/stampede3/ozone_detonation/runs/prop1/a
 **[Stampede3]**
 ```bash
 cd $SCRATCH/ozone_detonation/logs                                    # ALWAYS submit from here
-sbatch ~/ozone_detonation/05_runs/prop1_to_475mm.slurm               # continue prop1 to 475 mm
+sbatch ~/ozone_detonation/05_runs/prop1_to_475mm.slurm               # continue prop1 to 475 mm (done)
+sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_c1 ~/ozone_detonation/05_runs/recycle.slurm   # next cycle folder
+sbatch --export=ALL,RUN_NAME=prop1_c1 ~/ozone_detonation/05_runs/cycle_run.slurm             # run a cycle (repeat)
 sbatch --export=ALL,RUN_NAME=smoke3 ~/ozone_detonation/05_runs/smoke.slurm               # smoke test
 sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=<id1>:<id2>:...,KEEP_SNAPSHOT=1 ~/ozone_detonation/05_runs/analyze.slurm
 sbatch --export=ALL,RUN_NAME=prop1 ~/ozone_detonation/05_runs/to_vtk.slurm

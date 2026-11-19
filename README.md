@@ -22,7 +22,7 @@ It reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chemistry/2D_A
 |---|---|---|
 | ZND / CJ (SDToolbox + Cantera) | D_CJ = 1616 m/s; vN spike 174.5 kPa, 1900 K; induction length 1.56 mm | `04_znd_init/` |
 | Software: parallel run (96 ranks) | runs cleanly; FFCM2, DLB, AMR, Euler all active; no FATAL/FPE/NaN | `05_runs/` (jobs 3731474, 3731639) |
-| **Physics: propagation, 200 µs** | **D = 1615 m/s (−0.03 % vs CJ)**, fit 25–200 µs; oscillating as a cellular front | `05_runs/results/prop1_200us/` |
+| **Physics: propagation, 260 µs (shock at 475 mm)** | **D = 1621 m/s (+0.34 % vs CJ)**, fit 25–260 µs (1636 m/s, +1.3 %, over the last 100 µs); oscillating as a cellular front | `05_runs/results/prop1_260us/` (200 µs: `prop1_200us/`) |
 | Physics: cellular structure | triple-point tracks in `maxp`; 2 cells across (30 mm) after start-up, then larger, less regular cells (spectra: 30 and 60 mm) | same; 66 µs results in `results/prop1/` |
 
 **Not yet validated:**
@@ -136,6 +136,7 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | 5. Slurm workflow | done | `05_runs/smoke.slurm`: setup → decompose → `ibrun` with time guard → summary → restart; `analyze.slurm` |
 | 6. Smoke + propagation | software done; physics partly | Smoke 3731474 (AMR 2, Co 0.1): clean. Propagation `prop1` to 200 µs (4 jobs): D = 1615 m/s (−0.03 %), cellular tracks. Cell width not settled |
 | 7. Reproducible README | done | This file + `docs/future_ozone.md` |
-| 8. User guide; continue `prop1` to 475 mm | guide done; run **prepared, not yet submitted** | `docs/GUIDE.md`. `05_runs/prop1_to_475mm.slurm` (shock-position stop at 0.475 m), to be submitted by the user (GUIDE part 9) |
+| 8. User guide; continue `prop1` to 475 mm | done | `docs/GUIDE.md`. Job 3738975 (submitted by the user, not cancelled) stopped at 0.4751 m, t = 260.7 µs; clean. Analysis 3740049 |
+| 9. Window recycling past 0.5 m (option B, S = 0.30 m) | scripts **prepared, not yet run** | `05_runs/recycle.slurm` + `cycle_run.slurm` + `recycle_fields.py`; change #13 in `03_case/CHANGES.md`; GUIDE part 9b. Goal: about 0.5–1 m more travel (2–4 cycles, ~9 SU each) |
 
-**Compute used so far:** about 13 SU of TG-MCH260175 (including about 0.5 SU of system-cancelled jobs).
+**Compute used so far:** about 16 SU of TG-MCH260175 (including about 0.5 SU of system-cancelled jobs).

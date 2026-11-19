@@ -170,7 +170,47 @@ Results: `results/prop1_200us/` (shock speed, fields over the whole channel, max
 - **Spectra (80–370 mm):** across the channel, 30 mm (relative power 1.0) and 60 mm (0.81); along the channel, peak at 48 mm. The 60 mm and 48 mm contributions come from the later, larger cells.
 - **Reading:** the imposed 30 mm cells did not persist unchanged. The structure is moving towards fewer, larger cells, possibly one cell across the 60 mm channel. That supports caveat 1 above: the 30 mm at 66 µs was at least partly imposed by the initial sinusoid. **The natural cell width is not settled.** It would need a longer domain, a different initial perturbation, and/or higher resolution. The literature value (caveat 2) still has to be checked.
 
-## Continuation to 475 mm (prepared 2026-11-19, not yet run)
+## Continuation to 475 mm: job 3738975 (2026-11-19, submitted by the user), run `prop1`
+- **Result:** restarted from 200 µs and stopped by `SW_position_limit 0.475` at t = 260.67 µs, `last Leading shock location = 0.4750625 m`. 9795 steps in 4910 s (about 2.8 SU). `FATAL/FPE/NaN lines: 0`. min/max(T) = 298 / 2961 K. Last save: 260 µs.
+- **Expected end-of-run messages:** `solver exit code 255` and `BAD TERMINATION … KILLED BY SIGNAL: 9`. The solver calls `exit()` without shutting MPI down, so MPI kills the other ranks. This is not a crash; the shock-position line above shows it reached the limit.
+- **Not cancelled.** This is the first job the user submitted by hand. It is one data point for the cancellation question (problem 5), not proof.
+- **Analysis, job 3740049** (`05_runs/results/prop1_260us/`):
+  - D = 1621 m/s, fit 25–260 µs (+0.34 % vs CJ)
+  - D = 1636 m/s over the last 100 µs (+1.26 %)
+  - 150 174 cells
+  - The 260 µs snapshot is in `$WORK/ozone_detonation/runs/prop1/snapshot_0.00026` (3360 files, 157 MB).
+
+## Window recycling past 0.5 m ("option B", prepared 2026-11-19, not yet run)
+The goal is to run far enough for the cellular structure to settle, an estimated 0.5–1.0 m more. The channel stays 0.5 m long. Each **cycle** runs until the front reaches 0.475 m. Then `recycle.slurm` shifts the solution 0.30 m to the left and starts the next cycle.
+
+| Script | What it does | Cost |
+|---|---|---|
+| `recycle.slurm` | 1. Reconstructs the latest save of `SRC_RUN`.<br>2. Copies it and shifts the copy by −`SHIFT` (`recycle_fields.py shift`).<br>3. Creates `NEW_RUN`: repo settings, the 120 000-cell base mesh, fresh gas everywhere. The fresh-gas state is read from the cells ahead of the front and checked to be uniform.<br>4. Runs `mapFields`.<br>5. Runs checks, then `decomposePar`, then writes `.decomposed_ok`. | 1 node, ≤ 30 min, ≤ 0.5 SU |
+| `cycle_run.slurm` | `smoke.slurm` with `SW_LIMIT=0.475`, `WRITE_INT=1e-6`. It refuses a folder without `.decomposed_ok`, because `smoke.slurm` would otherwise restart it from the ZND state at t = 0. Resubmit the same command until the cycle reaches 0.475 m. | 2 nodes, 2 h, ≤ 4 SU per job; about 4.5 h (≈ 9 SU) per cycle |
+| `recycle_fields.py` | Plain-Python helper: `shift`, `ambient`, `target`, `check` | — |
+
+**Chain:** `prop1` (to 0.475 m) → recycle → `prop1_c1` → recycle → `prop1_c2` → …
+- **Lab position = domain position + OFFSET.** OFFSET is 0.30 m after the first shift and adds 0.30 m each cycle. It is stored in `<run>/recycle_info.txt`.
+- **Soot foil:** `maxp` is copied with the shift, so the kept 0.20 m carries its record into the next cycle. The full foil is the cycles placed at their offsets.
+
+**What a recycle does to the solution** (recorded as change #13 in `03_case/CHANGES.md`):
+- **The front is put onto the coarse grid.** OpenFOAM 8's `mapFields` uses the older `meshToMesh0` method with its default `interpolate` setting. Each new 0.5 mm cell takes an inverse-distance-weighted value from the old cell containing its centre and that cell's neighbours. It is not an exact volume average.
+- **The fine detail is lost.** The 0.125 mm level-2 detail at the front is reduced to 0.5 mm for the first steps, until the adaptive mesh refinement (AMR) rebuilds the fine cells. Triple points and transverse waves are weakened.
+- **The burned gas is cut.** Only about 0.175 m of burned gas is kept behind the front. The left boundary is `zeroGradient`, as before.
+- **Recovery is not yet known.** In cycle 1, compare the collision spacing and the maxp peaks before the recycle (prop1, 400–475 mm) with those after it.
+- **Cells not covered by the shifted solution keep the fresh gas.** In `meshToMesh0` such cells get address −1 and are skipped, so they keep the value already in the file. `check` verifies that every cell beyond 0.5 − SHIFT is still exactly fresh gas.
+- **`mapFields` only maps fields that already exist in the target** (`MapVolFields.H`), so `target` writes all 13 fields first.
+- **`rho` is not mapped.** The solver computes it from the thermodynamic state (`IOobject::NO_READ`), and `rhoU`/`rhoE` likewise.
+
+**Checks in `recycle_fields.py check`** (any failure stops the job before `.decomposed_ok`):
+- all values are finite
+- the mass fractions sum to 1 within 1e-6, and none are negative
+- the cells beyond 0.5 − SHIFT are unchanged fresh gas
+- the leading shock (the solver's own test, p > 101 425 Pa) is between 0.5 − SHIFT − 0.05 m and 0.5 − SHIFT, e.g. 0.15–0.20 m
+
+A local test on small synthetic files (2026-11-19) passed. It also caught a wrong front position and a corrupted fresh-gas cell, both inserted on purpose. **The job has not run on Stampede3 yet.**
+
+## Continuation to 475 mm: how it was prepared
 `prop1_to_475mm.slurm` continues `prop1` from 200 µs (shock at 375.7 mm) until the leading shock reaches x = 0.475 m. It sets `RUN_NAME=prop1`, `WRITE_INT=1e-6`, `END_TIME=3e-4` (backstop) and `SW_LIMIT=0.475`, then runs `smoke.slurm`.
 - **`SW_LIMIT` is new in `smoke.slurm`.** It sets `SW_position_limit` in the run copy of `constant/solverTypeProperties`. This is detonationFoam's own stop criterion: in `detonationFoam_V2.0.C`, `if (SW_position >= SW_position_limit) exit(EXIT_SUCCESS);`. It only ends the run and doesn't change the equations; the repository case keeps 1.0. The solver exits without a final save, so the last save is the previous 1 µs one.
 - **Restore before running.** If the run folder has no `.decomposed_ok` (purged `$SCRATCH`), the wrapper first restores `$WORK/ozone_detonation/runs/prop1/snapshot_0.0002`. Without that, `smoke.slurm` would restart from t = 0.
