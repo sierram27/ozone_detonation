@@ -274,6 +274,32 @@ A local test on small synthetic files (2026-11-19) passed. It also caught a wron
   - maxp equalled the maximum of the sub-cells.
   - A 0.31 m shift was rejected.
 
+### Fourth recycle attempt: job 3740666 (2026-11-19): SUCCEEDED, `prop1_cycle1` ready
+It took 1 min 24 s (about 0.02 SU). The fresh-gas values match job 3740579.
+
+**Step [4], map:**
+```
+source cells: 150174 (72000 shifted out of the domain); base cells filled: 48000 of 120000;
+source cells per base cell: {1: 45840, 4: 124, 7: 3, 10: 113, 13: 11, 16: 1909}
+```
+- **72 000 cells shifted out** = 600 columns × 120 rows, the old 0–0.3 m. All were unrefined.
+- **48 000 cells filled** = 400 × 120, the new 0–0.2 m.
+- **The counts add up:** 72 000 + 45 840 + 4·124 + 7·3 + 10·113 + 13·11 + 16·1909 = 150 174, every source cell.
+- **7, 10 and 13** are base cells refined in part: for example, 13 = one level-1 cell plus 12 level-2 cells. The coverage check confirms they are completely filled.
+
+**Checks:**
+- **Mass fractions:** max |ΣY − 1| = 6.3e-13.
+- **Cells beyond 0.2 m:** 72 000, all unchanged fresh gas.
+- **Leading shock:** x = 0.17375 m in the domain = **0.47375 m lab**. That is consistent with the 260 µs save: 0.4751 m at 260.67 µs minus about 1 mm. The 0.5 mm base cell puts the centre at …375.
+- **Burned gas kept:** 0.174 m behind the front. All 29 640 cells more than 50 mm behind the front are burned (hotter than fresh gas + 100 K).
+- **Peak values:** max p = 224 kPa (229 kPa before; averaging lowers the peak), max T = 2961 K, max maxp = 295 kPa, min T = 298 K.
+
+**Step [5], decompose:** simple (16 6 1) = 96 pieces, at most 1260 cells each (0.8 % above the average of 1250). Each processor folder holds the 13 fields at 0.00026.
+
+**Folder:** `.decomposed_ok` was written, the temporary `prop1_cycle1_mapsource` was removed, and `recycle_info.txt` (OFFSET = 0.3) and `log.decomposePar` were copied to `$WORK/ozone_detonation/runs/prop1_cycle1/`.
+
+**Not yet known:** whether the solver runs cleanly from this state, and how fast the front recovers. That is the first `cycle_run.slurm` job.
+
 ## Continuation to 475 mm: how it was prepared
 `prop1_to_475mm.slurm` continues `prop1` from 200 µs (shock at 375.7 mm) until the leading shock reaches x = 0.475 m. It sets `RUN_NAME=prop1`, `WRITE_INT=1e-6`, `END_TIME=3e-4` (backstop) and `SW_LIMIT=0.475`, then runs `smoke.slurm`.
 - **`SW_LIMIT` is new in `smoke.slurm`.** It sets `SW_position_limit` in the run copy of `constant/solverTypeProperties`. This is detonationFoam's own stop criterion: in `detonationFoam_V2.0.C`, `if (SW_position >= SW_position_limit) exit(EXIT_SUCCESS);`. It only ends the run and doesn't change the equations; the repository case keeps 1.0. The solver exits without a final save, so the last save is the previous 1 µs one.
