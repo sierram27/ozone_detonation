@@ -185,7 +185,7 @@ The goal is to run far enough for the cellular structure to settle, an estimated
 
 | Script | What it does | Cost |
 |---|---|---|
-| `recycle.slurm` | 1. Reconstructs the latest save of `SRC_RUN`.<br>2. Copies it and shifts the copy by −`SHIFT` (`recycle_fields.py shift`).<br>3. Creates `NEW_RUN`: repo settings, the 120 000-cell base mesh, fresh gas everywhere. The fresh-gas state is read from the cells ahead of the front and checked to be uniform.<br>4. Runs `mapFields`.<br>5. Runs checks, then `decomposePar`, then writes `.decomposed_ok`. | 1 node, ≤ 30 min, ≤ 0.5 SU |
+| `recycle.slurm` | 1. Reconstructs the latest save of `SRC_RUN`.<br>2. Copies it and shifts the copy by −`SHIFT` (`recycle_fields.py shift`).<br>3. Creates `NEW_RUN`: repo settings, the 120 000-cell base mesh, fresh gas everywhere. The fresh-gas state is read from the cells ahead of the front and checked to be uniform.<br>4. Averages the shifted cells onto the base cells (`recycle_fields.py map`).<br>5. Runs checks, then `decomposePar`, then writes `.decomposed_ok`. | 1 node, ≤ 30 min, ≤ 0.5 SU |
 | `cycle_run.slurm` | `smoke.slurm` with `SW_LIMIT=0.475`, `WRITE_INT=1e-6`. It refuses a folder without `.decomposed_ok`, because `smoke.slurm` would otherwise restart it from the ZND state at t = 0. Resubmit the same command until the cycle reaches 0.475 m. | 2 nodes, 2 h, ≤ 4 SU per job; about 4.5 h (≈ 9 SU) per cycle |
 | `recycle_fields.py` | Plain-Python helper: `shift`, `ambient`, `target`, `check` | — |
 
@@ -195,12 +195,15 @@ The goal is to run far enough for the cellular structure to settle, an estimated
 - **Soot foil:** `maxp` is copied with the shift, so the kept 0.20 m carries its record into the next cycle. The full foil is the cycles placed at their offsets.
 
 **What a recycle does to the solution** (recorded as change #13 in `03_case/CHANGES.md`):
-- **The front is put onto the coarse grid.** OpenFOAM 8's `mapFields` uses the older `meshToMesh0` method with its default `interpolate` setting. Each new 0.5 mm cell takes an inverse-distance-weighted value from the old cell containing its centre and that cell's neighbours. It is not an exact volume average.
+- **The front is put onto the coarse grid.** Since job 3740579 this is done by `recycle_fields.py map`, not OpenFOAM's `mapFields`.
+  - After a shift of exactly 600 base cells, every 0.5 mm base cell holds exactly 1, 4 or 16 shifted cells (AMR level 0, 1 or 2).
+  - The script reads every cell's rectangle from the mesh files and averages p, T, U and the mass fractions over the cells inside each base cell, weighted by area. The averages are exact and the mass fractions still sum to 1. `maxp` takes the **maximum** instead, so the soot-foil tracks are not faded.
+  - A shift that is not a whole number of base cells is rejected.
 - **The fine detail is lost.** The 0.125 mm level-2 detail at the front is reduced to 0.5 mm for the first steps, until the adaptive mesh refinement (AMR) rebuilds the fine cells. Triple points and transverse waves are weakened.
 - **The burned gas is cut.** Only about 0.175 m of burned gas is kept behind the front. The left boundary is `zeroGradient`, as before.
 - **Recovery is not yet known.** In cycle 1, compare the collision spacing and the maxp peaks before the recycle (prop1, 400–475 mm) with those after it.
-- **Cells not covered by the shifted solution keep the fresh gas.** In `meshToMesh0` such cells get address −1 and are skipped, so they keep the value already in the file. `check` verifies that every cell beyond 0.5 − SHIFT is still exactly fresh gas.
-- **`mapFields` only maps fields that already exist in the target** (`MapVolFields.H`), so `target` writes all 13 fields first.
+- **Cells not covered by the shifted solution keep the fresh gas.** `check` verifies that every cell beyond 0.5 − SHIFT is still fresh gas. It reads cell positions from the mesh rather than assuming a cell order.
+- **`rho` is not mapped.** The solver computes it from the thermodynamic state (`IOobject::NO_READ`), and `rhoU`/`rhoE` likewise.
 - **`rho` is not mapped.** The solver computes it from the thermodynamic state (`IOobject::NO_READ`), and `rhoU`/`rhoE` likewise.
 
 **Checks in `recycle_fields.py check`** (any failure stops the job before `.decomposed_ok`):
@@ -234,7 +237,7 @@ A local test on small synthetic files (2026-11-19) passed. It also caught a wron
 **Fix (2026-11-19), in `recycle_fields.py ambient`:**
 - **Narrower selection:** fresh-gas cells are those within 10⁻³ Pa and 10⁻³ K of the minimum, instead of 0.5. Cells up to 100 Pa above are counted as "shock foot" and reported.
 - **Tolerance:** uniformity is required to 10⁻⁶ relative, instead of 10⁻⁹. The fresh-gas value is the average of the selected cells.
-- **Rounding:** the average is rounded to 12 significant digits, the OpenFOAM `writePrecision`. Without this, the "cells beyond the copied region are unchanged" check would fail after `mapFields` rewrites them. That check now also uses a 10⁻⁹ relative tolerance.
+- **Rounding:** the average is rounded to 12 significant digits, the OpenFOAM `writePrecision`. Without this, the "cells beyond the copied region are unchanged" check would fail after the values are written and read back. That check now also uses a 10⁻⁹ relative tolerance.
 - **Logging:** the job log lists every fresh-gas value with its spread.
 - **Local test:** synthetic data reproduced this failure (one cell at 6670.486 Pa, the others 6670.0000003–6670.0000005 Pa). It now passes, with 1 cell left out as shock foot.
 - **Next:** rsync, then resubmit the same command.
@@ -260,6 +263,16 @@ A local test on small synthetic files (2026-11-19) passed. It also caught a wron
 - **Logging:** every quantity is printed with its spread, its allowed spread and ok / TOO LARGE, and all failures are listed at once.
 - **Local test:** this job's U noise now passes, and a real H2 difference of 10⁻³ still fails.
 - **About the averaged U:** the fresh gas written ahead of the front is the average, about 10⁻⁵ m/s. That is the same noise level, not a flow.
+
+### Third recycle attempt: job 3740579 (2026-11-19): fresh-gas check passed; OpenFOAM `mapFields` far too slow; replaced
+- **Steps [1]–[3] worked.** All 13 fresh-gas quantities were "ok". The mass fractions are H2 0.01277, O2 0.1014, AR 0.8859, which is exactly 2H₂ + O₂ + 7Ar.
+- **Step [4] stalled.** `mapFields` printed `Source mesh size: 150174  Target mesh size: 120000` at 16:11:55 and then searched cells at 100 % CPU (266 MB) for over 15 min. The job's 30 min limit stopped it.
+- **Likely cause:** `meshToMesh0` falls back to a slow whole-mesh search whenever its quick containment test fails at the nearest cell. That fallback is triggered for "boundary" cells, and in a 2D mesh every cell touches the empty front/back patch. Also, after the shift the base-cell centres sit exactly on corners of the level-2 cells, where the quick test is unreliable.
+- **Replacement:** `recycle_fields.py map`, described above.
+- **Local test:** a synthetic mesh with levels 0, 1 and 2 and the same file formats, including a 5-point face with a hanging node.
+  - Linear p, T, U fields were averaged exactly: the largest error was 3×10⁻¹¹.
+  - maxp equalled the maximum of the sub-cells.
+  - A 0.31 m shift was rejected.
 
 ## Continuation to 475 mm: how it was prepared
 `prop1_to_475mm.slurm` continues `prop1` from 200 µs (shock at 375.7 mm) until the leading shock reaches x = 0.475 m. It sets `RUN_NAME=prop1`, `WRITE_INT=1e-6`, `END_TIME=3e-4` (backstop) and `SW_LIMIT=0.475`, then runs `smoke.slurm`.

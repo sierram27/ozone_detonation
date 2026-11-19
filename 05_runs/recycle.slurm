@@ -11,8 +11,9 @@
 #   1. reconstruct the latest save of run SRC_RUN (reconstructParMesh + reconstructPar)
 #   2. copy it and shift the copy left by SHIFT m (the old x = SHIFT..0.5 m becomes 0..0.5-SHIFT m)
 #   3. new run folder NEW_RUN: case settings from the repo, the 0.5 m base mesh (0.5 mm cells), fresh gas
-#   4. mapFields (OpenFOAM 8) copies the shifted solution onto it; beyond 0.5-SHIFT m stays fresh gas.
-#      maxp (the soot-foil record) is copied too.
+#   4. recycle_fields.py map: every 0.5 mm base cell gets the area-weighted average of the 1, 4 or 16
+#      shifted source cells inside it (maxp: their maximum); beyond 0.5-SHIFT m stays fresh gas.
+#      (OpenFOAM 8 mapFields was tried first and was still searching cells after 15 min, job 3740579.)
 #   5. checks, decomposePar, .decomposed_ok -> ready for cycle_run.slurm
 # Lab position = domain position + OFFSET. OFFSET adds up over cycles; it is written to
 # $SCRATCH/ozone_detonation/$NEW_RUN/recycle_info.txt (and to $WORK/ozone_detonation/runs/$NEW_RUN).
@@ -32,7 +33,7 @@ SRC_RUN=${SRC_RUN:-prop1}
 NEW_RUN=${NEW_RUN:-prop1_cycle1}
 SHIFT=${SHIFT:-0.30}
 NP=${NP:-96}
-L=0.5; NX=1000; NCELLS=120000; DXC=0.0005      # base mesh (system/blockMeshDict: 1000 x 120 cells, 0.5 x 0.06 m)
+L=0.5; NCELLS=120000; DXC=0.0005      # base mesh (system/blockMeshDict: 1000 x 120 cells, 0.5 x 0.06 m)
 FIELDS="p T U maxp H H2 O O2 OH H2O HO2 H2O2 AR"
 
 source ~/ozone_detonation/01_environment/env.sh
@@ -68,10 +69,8 @@ grep -m1 note "$T/polyMesh/owner" | sed 's/^ */   source mesh: /'
 
 # ---------------------------------------------------------------- [2] shifted copy
 echo "== [2] shifted copy in $MAPSRC"
-mkdir -p "$MAPSRC/$T" "$MAPSRC/constant"
-cp -r system "$MAPSRC"/
-for f in constant/*; do [ "$(basename "$f")" = polyMesh ] || cp -r "$f" "$MAPSRC/constant/"; done   # no base mesh: the
-cp -r "$T/polyMesh" "$MAPSRC/$T/"                                                                    # mesh is read from $T
+mkdir -p "$MAPSRC/$T"
+cp -r "$T/polyMesh" "$MAPSRC/$T/"
 for f in $FIELDS; do cp "$T/$f" "$MAPSRC/$T/" || exit 1; done
 py shift "$MAPSRC/$T/polyMesh/points" "-$SHIFT" || exit 1
 py ambient "$MAPSRC/$T" "$MAPSRC/ambient.json" || exit 1
@@ -83,27 +82,11 @@ cp -r "$CASE_SRC"/{constant,system} .
 rm -rf constant/polyMesh; cp -r "$SRC/constant/polyMesh" constant/
 grep -q "nCells: $NCELLS " constant/polyMesh/owner || { echo "ERROR: $SRC/constant/polyMesh is not the $NCELLS-cell base mesh"; exit 1; }
 py target "$CASE_SRC/0" "$T" "$MAPSRC/ambient.json" || exit 1
-cat > system/mapFieldsDict <<'EOF'
-FoamFile
-{
-    version     2.0;
-    format      ascii;
-    class       dictionary;
-    object      mapFieldsDict;
-}
-// Window recycling: no patch-to-patch mapping. Boundary values are recomputed by the solver
-// (zeroGradient / slip), so only the cell values are copied.
-patchMap        ( );
-cuttingPatches  ( );
-EOF
 
 # ---------------------------------------------------------------- [4] map
-echo "== [4] mapFields (target time = $T, the latest time in the new folder)"
-mapFields "$MAPSRC" -sourceTime "$T" > log.mapFields 2>&1 || { tail -30 log.mapFields; exit 1; }
-grep -E "^Source time|^Target time" log.mapFields | sed 's/^/   /'
-NMAP=$(grep -c "interpolating" log.mapFields)
-echo "   fields mapped: $NMAP (expected 13)"; [ "$NMAP" -eq 13 ] || { tail -30 log.mapFields; exit 1; }
-py check "$T" "$MAPSRC/ambient.json" $NX $DXC $L "$SHIFT" "$OFFSET" || exit 1
+echo "== [4] map: average the shifted source cells onto the base cells"
+py map "$MAPSRC/$T" "$T" constant/polyMesh $DXC || exit 1
+py check "$T" "$MAPSRC/ambient.json" constant/polyMesh $L "$SHIFT" "$OFFSET" || exit 1
 
 # ---------------------------------------------------------------- [5] decompose (as in smoke.slurm)
 NY=$((NP / 16)); [ $((16 * NY)) -eq "$NP" ] || { echo "ERROR: NP=$NP must be a multiple of 16"; exit 1; }
@@ -119,6 +102,6 @@ touch .decomposed_ok
 rm -rf "$MAPSRC"
 
 SAVE=$WORK/ozone_detonation/runs/$NEW_RUN; mkdir -p "$SAVE"
-cp recycle_info.txt log.mapFields log.decomposePar "$SAVE"/
+cp recycle_info.txt log.decomposePar "$SAVE"/
 echo "== END $(date): $NEW is ready. Lab position = domain position + $OFFSET m."
 echo "   Next: sbatch --export=ALL,RUN_NAME=$NEW_RUN ~/ozone_detonation/05_runs/cycle_run.slurm"

@@ -9,8 +9,11 @@ Subcommands
   target  TEMPLATE_0_DIR TGT_TIME_DIR AMBIENT.json
                                            write every field to be mapped, filled with the fresh-gas state
                                            (boundary conditions taken from the case's 0/ templates)
-  check   TGT_TIME_DIR AMBIENT.json NX DXC L SHIFT OFFSET
-                                           checks after mapFields on the base mesh (NX cells in x, size DXC)
+  map     SRC_TIME_DIR TGT_TIME_DIR TGT_POLYMESH DXC
+                                           average the (shifted) source cells onto the base cells containing
+                                           them; replaces OpenFOAM 8 mapFields, which took > 15 min (job 3740579)
+  check   TGT_TIME_DIR AMBIENT.json TGT_POLYMESH L SHIFT OFFSET
+                                           checks after mapping (cell positions read from the target mesh)
 """
 import json
 import math
@@ -39,6 +42,8 @@ def fmt_value(v):
 def split_list(text, start, n, path):
     """Items of an OpenFOAM list whose '(' ends at text[start]. One item per line, as OpenFOAM writes them."""
     rest = text[start:]
+    if n == 0:
+        return [], rest.lstrip()
     if not rest.startswith("\n"):
         sys.exit(f"ERROR: unexpected list layout in {path}")
     parts = rest[1:].split("\n", n)
@@ -157,13 +162,102 @@ def cmd_target(tmpl_dir, tdir, amb_json):
     print(f"   wrote {len(FIELDS)} fresh-gas fields in {tdir}: {' '.join(FIELDS)}")
 
 
-def cmd_check(tdir, amb_json, nx, dxc, length, shift, offset):
-    nx, dxc, length, shift, offset = int(nx), float(dxc), float(length), float(shift), float(offset)
+def read_list(path, conv):
+    """A plain OpenFOAM list file (points, faces, owner, neighbour): header, N, '(', one item per line, ')'."""
+    text = open(path).read()
+    head_end = text.index("}", text.index("FoamFile"))
+    m = re.compile(r"\n(\d+)\s*\n\(").search(text, head_end)
+    items, _ = split_list(text, m.end(), int(m.group(1)), path)
+    return [conv(s) for s in items]
+
+
+def mesh_boxes(polymesh):
+    """Per cell: (xmin, xmax, ymin, ymax). Every cell of this 2D mesh, refined or not, is an axis-aligned
+    rectangle, so the bounding box of the points on its faces is the cell itself."""
+    pts = read_list(os.path.join(polymesh, "points"), parse_value)
+    faces = read_list(os.path.join(polymesh, "faces"), lambda s: [int(a) for a in s[s.index("(") + 1:-1].split()])
+    owner = read_list(os.path.join(polymesh, "owner"), int)
+    neigh = read_list(os.path.join(polymesh, "neighbour"), int)
+    n = max(owner) + 1
+    inf = float("inf")
+    x0, x1, y0, y1 = [inf] * n, [-inf] * n, [inf] * n, [-inf] * n
+    for fi, face in enumerate(faces):
+        xs = [pts[k][0] for k in face]
+        ys = [pts[k][1] for k in face]
+        a, b, c, d = min(xs), max(xs), min(ys), max(ys)
+        for ci in ((owner[fi], neigh[fi]) if fi < len(neigh) else (owner[fi],)):
+            if a < x0[ci]: x0[ci] = a
+            if b > x1[ci]: x1[ci] = b
+            if c < y0[ci]: y0[ci] = c
+            if d > y1[ci]: y1[ci] = d
+    return list(zip(x0, x1, y0, y1))
+
+
+def cmd_map(src_tdir, tgt_tdir, tgt_polymesh, dxc):
+    """Average the shifted source cells onto the base-mesh cells that contain them.
+    Each base cell (dxc x dxc) holds exactly 1, 4 or 16 source cells (AMR level 0, 1, 2) when the shift is
+    a whole number of base cells. Values: area-weighted average; maxp: maximum (a peak record is not averaged).
+    Base cells with no source cells keep the fresh-gas values already in tgt_tdir."""
+    dxc = float(dxc)
+    sb = mesh_boxes(os.path.join(src_tdir, "polyMesh"))
+    tb = mesh_boxes(tgt_polymesh)
+    key = lambda xc, yc: (math.floor(xc / dxc), math.floor(yc / dxc))
+    tindex = {key((a + b) / 2, (c + d) / 2): i for i, (a, b, c, d) in enumerate(tb)}
+    if len(tindex) != len(tb):
+        sys.exit("ERROR: target mesh is not a uniform grid of size DXC")
+    groups, misaligned, cut = {}, 0, 0
+    for si, (a, b, c, d) in enumerate(sb):
+        k = key((a + b) / 2, (c + d) / 2)
+        if k not in tindex:
+            cut += 1                                   # shifted out of the domain (x < 0)
+            continue
+        ix, iy = k
+        eps = 1e-9 * dxc
+        if a < ix * dxc - eps or b > (ix + 1) * dxc + eps or c < iy * dxc - eps or d > (iy + 1) * dxc + eps:
+            misaligned += 1
+        groups.setdefault(tindex[k], []).append((si, (b - a) * (d - c)))
+    if misaligned:
+        sys.exit(f"ERROR: {misaligned} source cells straddle base cells (SHIFT must be a multiple of {dxc} m)")
+    gap = [ti for ti, g in groups.items() if abs(sum(w for _, w in g) - dxc * dxc) > 1e-6 * dxc * dxc]
+    if gap:
+        sys.exit(f"ERROR: {len(gap)} base cells are only partly covered by source cells")
+    sizes = {}
+    for g in groups.values():
+        sizes[len(g)] = sizes.get(len(g), 0) + 1
+    print(f"   source cells: {len(sb)} ({cut} shifted out of the domain); base cells filled: {len(groups)} of "
+          f"{len(tb)}; source cells per base cell: {dict(sorted(sizes.items()))}")
+
+    ns = len(sb)
+    for f in FIELDS:
+        sv = values(os.path.join(src_tdir, f), ns)
+        tpath = os.path.join(tgt_tdir, f)
+        tv = values(tpath, len(tb))
+        vec = isinstance(tv[0], tuple)
+        for ti, g in groups.items():
+            if f == "maxp":
+                tv[ti] = max(sv[si] for si, _ in g)
+            elif vec:
+                area = sum(w for _, w in g)
+                tv[ti] = tuple(sum(sv[si][c] * w for si, w in g) / area for c in range(3))
+            else:
+                area = sum(w for _, w in g)
+                tv[ti] = sum(sv[si] * w for si, w in g) / area
+        text = open(tpath).read()
+        body = (f"internalField   nonuniform List<{'vector' if vec else 'scalar'}> \n{len(tv)}\n(\n"
+                + "\n".join(fmt_value(a) for a in tv) + "\n)\n;")
+        text, n1 = re.subn(r"^internalField\s+uniform\s+[^;]*;", lambda _: body, text, flags=re.M)
+        if n1 != 1:
+            sys.exit(f"ERROR: {tpath} has no uniform internalField to replace")
+        open(tpath, "w").write(text)
+    print(f"   mapped {len(FIELDS)} fields: {' '.join(FIELDS)} (maxp as maximum, others area-weighted average)")
+
+
+def cmd_check(tdir, amb_json, tgt_polymesh, length, shift, offset):
+    length, shift, offset = float(length), float(shift), float(offset)
     amb = json.load(open(amb_json))
-    p = values(os.path.join(tdir, "p"))
-    n = len(p)
+    x = [(a + b) / 2 for a, b, _, _ in mesh_boxes(tgt_polymesh)]
+    n = len(x)
     v = {f: values(os.path.join(tdir, f), n) for f in FIELDS}
-    x = [((i % nx) + 0.5) * dxc for i in range(n)]
     edge = length - shift                      # copied region is 0 .. edge
     bad = []
 
@@ -209,7 +303,7 @@ def cmd_check(tdir, amb_json, nx, dxc, length, shift, offset):
 
 
 if __name__ == "__main__":
-    cmds = {"shift": cmd_shift, "ambient": cmd_ambient, "target": cmd_target, "check": cmd_check}
+    cmds = {"shift": cmd_shift, "ambient": cmd_ambient, "target": cmd_target, "map": cmd_map, "check": cmd_check}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         sys.exit(__doc__)
     cmds[sys.argv[1]](*sys.argv[2:])

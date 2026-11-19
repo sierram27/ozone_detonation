@@ -488,7 +488,7 @@ tail -30 $SCRATCH/ozone_detonation/logs/det_recycle_<jobid>.log
 ```
 What you should see:
 - `fresh gas from … cells ahead of the front: p = 6670 Pa, T = 298 K, U = (0, 0, 0)`
-- `fields mapped: 13 (expected 13)`
+- `base cells filled: … source cells per base cell: {1: …, 4: …, 16: …}` and `mapped 13 fields`
 - `max |sum - 1|` very small (below 1e-6)
 - `cells beyond x = 0.200 m (not copied): …, of which not fresh gas: 0`
 - `leading shock … x = 0.17… m in the domain = 0.47… m lab` (for `prop1_cycle1`; one OFFSET more for each later cycle)
