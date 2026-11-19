@@ -189,7 +189,8 @@ The goal is to run far enough for the cellular structure to settle, an estimated
 | `cycle_run.slurm` | `smoke.slurm` with `SW_LIMIT=0.475`, `WRITE_INT=1e-6`. It refuses a folder without `.decomposed_ok`, because `smoke.slurm` would otherwise restart it from the ZND state at t = 0. Resubmit the same command until the cycle reaches 0.475 m. | 2 nodes, 2 h, ≤ 4 SU per job; about 4.5 h (≈ 9 SU) per cycle |
 | `recycle_fields.py` | Plain-Python helper: `shift`, `ambient`, `target`, `check` | — |
 
-**Chain:** `prop1` (to 0.475 m) → recycle → `prop1_c1` → recycle → `prop1_c2` → …
+**Chain:** `prop1` (to 0.475 m) → recycle → `prop1_cycle1` → recycle → `prop1_cycle2` → …
+- **Naming:** `cycleN` means the N-th 0.30 m window of option B. It is not option C1 or C2 (a longer domain), which was not chosen.
 - **Lab position = domain position + OFFSET.** OFFSET is 0.30 m after the first shift and adds 0.30 m each cycle. It is stored in `<run>/recycle_info.txt`.
 - **Soot foil:** `maxp` is copied with the shift, so the kept 0.20 m carries its record into the next cycle. The full foil is the cycles placed at their offsets.
 

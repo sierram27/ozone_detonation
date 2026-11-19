@@ -11,14 +11,14 @@
 # domain, i.e. 0.30 m of travel per cycle (about 190 us of simulated time, about 4.5 h on 2 nodes).
 #
 # Usage (submit from $SCRATCH/ozone_detonation/logs):
-#   sbatch --export=ALL,RUN_NAME=prop1_c1 ~/ozone_detonation/05_runs/cycle_run.slurm
+#   sbatch --export=ALL,RUN_NAME=prop1_cycle1 ~/ozone_detonation/05_runs/cycle_run.slurm
 # A 2 h job will not finish a cycle: submit the SAME command again; it restarts from the latest 1 us save.
 # The cycle is done when the job log shows "last Leading shock location = 0.475..." (see docs/GUIDE.md).
 # Cost: 2 nodes x up to 2 h = at most 4 SU per job.
 #
 # The work is done by smoke.slurm (restart, solver with time guard, log summary, logs to $WORK).
 set -u
-: "${RUN_NAME:?set RUN_NAME, e.g. sbatch --export=ALL,RUN_NAME=prop1_c1 cycle_run.slurm}"
+: "${RUN_NAME:?set RUN_NAME, e.g. sbatch --export=ALL,RUN_NAME=prop1_cycle1 cycle_run.slurm}"
 # Safety: smoke.slurm treats a folder WITHOUT .decomposed_ok as a new run, deletes it and starts again
 # from the ZND initial condition at t = 0. A recycled run must never take that path.
 [ -f "$SCRATCH/ozone_detonation/$RUN_NAME/.decomposed_ok" ] || {

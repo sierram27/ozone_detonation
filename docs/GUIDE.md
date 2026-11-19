@@ -452,11 +452,11 @@ The soot-foil record `maxp` moves with the shift. Each cycle adds 0.30 m of trav
 | Run folder | Lab distance covered | Made by |
 |---|---|---|
 | `prop1` | 0.05 → 0.475 m | done (jobs 3731639 … 3738975) |
-| `prop1_c1` | 0.475 → 0.775 m | recycle of `prop1` |
-| `prop1_c2` | 0.775 → 1.075 m | recycle of `prop1_c1` |
-| `prop1_c3` | 1.075 → 1.375 m | recycle of `prop1_c2` |
+| `prop1_cycle1` | 0.475 → 0.775 m | recycle of `prop1` |
+| `prop1_cycle2` | 0.775 → 1.075 m | recycle of `prop1_cycle1` |
+| `prop1_cycle3` | 1.075 → 1.375 m | recycle of `prop1_cycle2` |
 
-**Lab position = domain position + OFFSET.** The OFFSET is in `<run folder>/recycle_info.txt` (0.30 for `prop1_c1`, 0.60 for `prop1_c2`, …). Positions printed in the solver log are **domain** positions (0–0.5 m).
+**Lab position = domain position + OFFSET.** The OFFSET is in `<run folder>/recycle_info.txt` (0.30 for `prop1_cycle1`, 0.60 for `prop1_cycle2`, …). Positions printed in the solver log are **domain** positions (0–0.5 m).
 
 **What it costs the physics:**
 - Each recycle averages the 0.125 mm front cells onto 0.5 mm cells. The adaptive mesh refinement (AMR) rebuilds the fine cells within a few steps, but the lost detail stays lost.
@@ -473,10 +473,10 @@ The soot-foil record `maxp` moves with the shift. Each cycle adds 0.30 m of trav
 ```bash
 squeue -u $USER          # nothing may be running on the source run folder
 cd $SCRATCH/ozone_detonation/logs
-sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_c1 ~/ozone_detonation/05_runs/recycle.slurm
+sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_runs/recycle.slurm
 ```
 - `SRC_RUN` is the folder that has just reached 0.475 m. `NEW_RUN` is the folder to create.
-- For the next cycles, use `SRC_RUN=prop1_c1,NEW_RUN=prop1_c2`, then `SRC_RUN=prop1_c2,NEW_RUN=prop1_c3`, and so on.
+- For the next cycles, use `SRC_RUN=prop1_cycle1,NEW_RUN=prop1_cycle2`, then `SRC_RUN=prop1_cycle2,NEW_RUN=prop1_cycle3`, and so on.
 - The job takes about 10 minutes. The source run is not changed.
 - If `NEW_RUN` already exists and is complete, the job stops without touching it.
 
@@ -491,7 +491,7 @@ What you should see:
 - `fields mapped: 13 (expected 13)`
 - `max |sum - 1|` very small (below 1e-6)
 - `cells beyond x = 0.200 m (not copied): …, of which not fresh gas: 0`
-- `leading shock … x = 0.17… m in the domain = 0.47… m lab` (for `prop1_c1`; one OFFSET more for each later cycle)
+- `leading shock … x = 0.17… m in the domain = 0.47… m lab` (for `prop1_cycle1`; one OFFSET more for each later cycle)
 - `checks passed`, then `is ready`
 
 If it says `ERROR`, nothing usable was created. Send the log to someone who can look at it before going on.
@@ -501,7 +501,7 @@ If it says `ERROR`, nothing usable was created. Send the log to someone who can 
 **[Stampede3]**
 ```bash
 cd $SCRATCH/ozone_detonation/logs
-sbatch --export=ALL,RUN_NAME=prop1_c1 ~/ozone_detonation/05_runs/cycle_run.slurm
+sbatch --export=ALL,RUN_NAME=prop1_cycle1 ~/ozone_detonation/05_runs/cycle_run.slurm
 ```
 - Each job runs up to 2 h (at most 4 SU) and covers about 85 µs, about 0.13 m. **A cycle takes about 3 jobs.**
 - Submit the next job only after the previous one has ended.
@@ -511,7 +511,7 @@ sbatch --export=ALL,RUN_NAME=prop1_c1 ~/ozone_detonation/05_runs/cycle_run.slurm
   - `FATAL/FPE/NaN lines: 0` must hold every time.
 - `cycle_run.slurm` refuses a folder without `.decomposed_ok`. Without that safeguard, `smoke.slurm` would wipe it and restart from t = 0.
 
-**9b.5 Analysis of a cycle:** as in Part 11, with `RUN_NAME=prop1_c1` and that cycle's job numbers. The speed is unaffected by the offset. For the full soot foil, place each cycle's `maxp` at its OFFSET.
+**9b.5 Analysis of a cycle:** as in Part 11, with `RUN_NAME=prop1_cycle1` and that cycle's job numbers. The speed is unaffected by the offset. For the full soot foil, place each cycle's `maxp` at its OFFSET.
 
 ---
 
@@ -770,8 +770,8 @@ scp 'stampede3:/work2/12029/smartinez627/stampede3/ozone_detonation/runs/prop1/a
 ```bash
 cd $SCRATCH/ozone_detonation/logs                                    # ALWAYS submit from here
 sbatch ~/ozone_detonation/05_runs/prop1_to_475mm.slurm               # continue prop1 to 475 mm (done)
-sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_c1 ~/ozone_detonation/05_runs/recycle.slurm   # next cycle folder
-sbatch --export=ALL,RUN_NAME=prop1_c1 ~/ozone_detonation/05_runs/cycle_run.slurm             # run a cycle (repeat)
+sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_runs/recycle.slurm   # next cycle folder
+sbatch --export=ALL,RUN_NAME=prop1_cycle1 ~/ozone_detonation/05_runs/cycle_run.slurm             # run a cycle (repeat)
 sbatch --export=ALL,RUN_NAME=smoke3 ~/ozone_detonation/05_runs/smoke.slurm               # smoke test
 sbatch --export=ALL,RUN_NAME=prop1,LOGJOB=<id1>:<id2>:...,KEEP_SNAPSHOT=1 ~/ozone_detonation/05_runs/analyze.slurm
 sbatch --export=ALL,RUN_NAME=prop1 ~/ozone_detonation/05_runs/to_vtk.slurm

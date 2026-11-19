@@ -19,9 +19,9 @@
 # The source run is not changed, except that its latest save is reconstructed (as to_vtk.slurm does).
 #
 # Usage (submit from $SCRATCH/ozone_detonation/logs):
-#   sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_c1 ~/ozone_detonation/05_runs/recycle.slurm
-#   sbatch --export=ALL,SRC_RUN=prop1_c1,NEW_RUN=prop1_c2 ~/ozone_detonation/05_runs/recycle.slurm   (next cycle)
-# Variables: SRC_RUN (default prop1), NEW_RUN (default prop1_c1), SHIFT (default 0.30 m),
+#   sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_runs/recycle.slurm
+#   sbatch --export=ALL,SRC_RUN=prop1_cycle1,NEW_RUN=prop1_cycle2 ~/ozone_detonation/05_runs/recycle.slurm   (next cycle)
+# Variables: SRC_RUN (default prop1), NEW_RUN (default prop1_cycle1), SHIFT (default 0.30 m),
 #            NP (default 96 = MPI ranks of the next run, for decomposePar)
 # Cost: 1 node, about 10 min (limit 30 min) = at most 0.5 SU.
 # What mapping does to the solution, and why: 05_runs/README.md, "Window recycling".
@@ -29,7 +29,7 @@
 set -u
 case "${SLURM_SUBMIT_DIR:-}" in "$HOME"|"$HOME"/*) echo "WARNING: submitted from \$HOME ($SLURM_SUBMIT_DIR); submit from \$SCRATCH instead";; esac
 SRC_RUN=${SRC_RUN:-prop1}
-NEW_RUN=${NEW_RUN:-prop1_c1}
+NEW_RUN=${NEW_RUN:-prop1_cycle1}
 SHIFT=${SHIFT:-0.30}
 NP=${NP:-96}
 L=0.5; NX=1000; NCELLS=120000; DXC=0.0005      # base mesh (system/blockMeshDict: 1000 x 120 cells, 0.5 x 0.06 m)
