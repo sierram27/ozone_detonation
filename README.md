@@ -1,5 +1,7 @@
 # ozone_detonation
 
+**To run everything yourself, step by step, follow [`docs/GUIDE.md`](docs/GUIDE.md).**
+
 This project runs 2D H2–O2–Ar detonation simulations with **detonationFoam v1.2 (OpenFOAM 8)** on **TACC Stampede3**. It is the baseline for a later study of how ozone affects detonation ([`docs/future_ozone.md`](docs/future_ozone.md)).
 
 It reuses Dr. Ryan Johnson's Stanford-collaboration case `Wang/nn_chemistry/2D_Ar_H2_O2/ffcm2/coarse_mesh_slip` (FFCM2 chemistry) and his ZND initialization scripts (`Wang/nn_chemistry/ZND_Init/`). Changes are kept to what OpenFOAM 8 needs, plus the user decisions listed below.
@@ -119,7 +121,7 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | `03_case/` | The migrated case `coarse_mesh_slip_of8/` and `CHANGES.md` |
 | `04_znd_init/` | ZND initialization: background, workflow, checks |
 | `05_runs/` | Run, restart and analysis scripts; smoke and propagation results |
-| `docs/` | Future work: ozone |
+| `docs/` | `GUIDE.md` (step-by-step guide to the whole workflow); future work: ozone |
 
 `AGENTS.md` holds the working rules for AI agents on this project.
 
@@ -134,5 +136,6 @@ Kept unchanged: mesh, mixture, FFCM2 data, boundary conditions, schemes, chemist
 | 5. Slurm workflow | done | `05_runs/smoke.slurm`: setup → decompose → `ibrun` with time guard → summary → restart; `analyze.slurm` |
 | 6. Smoke + propagation | software done; physics partly | Smoke 3731474 (AMR 2, Co 0.1): clean. Propagation `prop1` to 200 µs (4 jobs): D = 1615 m/s (−0.03 %), cellular tracks. Cell width not settled |
 | 7. Reproducible README | done | This file + `docs/future_ozone.md` |
+| 8. User guide; continue `prop1` to 475 mm | guide done; run **prepared, not yet submitted** | `docs/GUIDE.md`. `05_runs/prop1_to_475mm.slurm` (shock-position stop at 0.475 m), to be submitted by the user (GUIDE part 9) |
 
 **Compute used so far:** about 13 SU of TG-MCH260175 (including about 0.5 SU of system-cancelled jobs).

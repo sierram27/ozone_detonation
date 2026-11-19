@@ -17,6 +17,9 @@
 #   END_TIME     simulated end time in s                              (default: 2e-6)
 #   WRITE_INT    write interval in s                                  (default: 5e-7)
 #   RECONSTRUCT  1 = run reconstructPar -latestTime after the solver  (default: 0)
+#   SW_LIMIT     stop when the leading shock reaches this x in m       (default: unset = keep
+#                the case value 1.0, i.e. never). The solver exits at once without a final
+#                save, so the last saved time is the previous WRITE_INT save.
 #
 # RESTART: if $SCRATCH/ozone_detonation/$RUN_NAME/.decomposed_ok exists (written only after a
 # successful decomposePar), the script skips setup and decomposition and continues from the
@@ -70,9 +73,14 @@ fi
 # Settings for this run (run copy only)
 # (plain sed: TACC's OpenFOAM 8 utilities have proven fragile, see 04_znd_init/README.md)
 sed -i -E "s/^endTime[[:space:]].*/endTime         $END_TIME;/; s/^writeInterval[[:space:]].*/writeInterval   $WRITE_INT;/" system/controlDict
+# Shock-position stop (a stop criterion only; it does not change the equations).
+if [ -n "${SW_LIMIT:-}" ]; then
+    sed -i -E "s/^SW_position_limit[[:space:]].*/SW_position_limit   $SW_LIMIT;/" constant/solverTypeProperties
+    grep -q "^SW_position_limit   $SW_LIMIT;" constant/solverTypeProperties || { echo "ERROR: SW_position_limit edit failed"; exit 1; }
+fi
 grep -E "^(application|startFrom|endTime|deltaT|adjustTimeStep|maxCo|maxDeltaT|writeInterval)" system/controlDict | sed 's/^/   /'
 grep -E "^(maxRefinement)" constant/dynamicMeshDict | sed 's/^/   /'
-grep -E "^(solverType)" constant/solverTypeProperties | sed 's/^/   /'
+grep -E "^(solverType|SW_position_limit)" constant/solverTypeProperties | sed 's/^/   /'
 
 # ---------------------------------------------------------------- [2] decompose
 if [ ! -f .decomposed_ok ]; then
@@ -105,6 +113,7 @@ grep -m1 -E "Selecting ODE solver"                     $LOG | sed 's/^/   /'
 grep -m1 -E "solverType ="                             $LOG | sed 's/^/   /'
 echo "   time steps completed: $(grep -c '^Time = ' $LOG)"
 grep '^Time = ' $LOG | tail -1 | sed 's/^/   last /'
+grep '^Leading shock location' $LOG | tail -1 | sed 's/^/   last /'
 grep '^deltaT = ' $LOG | tail -1 | sed 's/^/   last /'
 grep 'Max Courant Number' $LOG | awk '{ if ($NF > m) m = $NF } END { print "   max Courant number over the run:", m }'
 grep 'Max Courant Number' $LOG | tail -1 | sed 's/^/   last /'
