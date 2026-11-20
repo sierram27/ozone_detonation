@@ -110,17 +110,3 @@ The git repository lives on your Mac and is pushed to GitHub from there. Scripts
 ```
 rsync -av --exclude .git ~/Documents/Research/repos/ozone_detonation/ stampede3:ozone_detonation/
 ```
-
-## Personal shell aliases on Stampede3 (added 2026-11-20)
-- **The file:** `stampede_aliases.sh` holds the user's Mac aliases, translated to bash, which is Stampede3's login shell. A `~/.zshrc` there is not read.
-- **Where it is loaded:** one line in `~/.bashrc` on Stampede3 sources the file. The backup is `~/.bashrc.bak-2026-11-20`.
-- **Interactive shells only,** so batch jobs and scripted `ssh` commands are unchanged.
-- **The aliases:**
-  - `log` goes to `$SCRATCH/ozone_detonation/logs`. It replaces the Mac's `home`.
-  - `ll`, `clc`, `..` … `......`, `jot`, `p` work as on the Mac.
-  - `sdtoolbox` activates the `$WORK/venvs/znd` Python environment.
-  - `cd` lists the folder after changing into it.
-- **Left out:**
-  - `stampede`, `transfer` and the `transfer()` function: they log in to or copy to Stampede3 from the Mac.
-  - `dircolors=gdircolors`: Linux has `dircolors` itself.
-  - `mamba` and the conda setup: not installed on Stampede3.
