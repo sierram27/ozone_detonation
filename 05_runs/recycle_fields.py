@@ -557,6 +557,32 @@ def cmd_cut(src_tdir, tgt_tdir, tgt_polymesh, shift, length, dxc):
     psrc = values(os.path.join(src_tdir, "p"), nold)
     if any(p2[k] != psrc[c] for k, c in enumerate(keep)):
         sys.exit("ERROR: kept p values changed")
+
+    # ---- a few cells side by side, so the shift can be seen in the log
+    Ts, T2 = values(os.path.join(src_tdir, "T"), nold), values(os.path.join(tgt_tdir, "T"), ncell)
+    shocked = [k for k, c in enumerate(keep) if psrc[c] > P_SHOCK]
+    picks = []
+    if shocked:
+        picks.append(("leading shock cell", max(shocked, key=lambda k: b2[k][1])))
+    picks.append(("highest p", max(range(nk), key=lambda k: p2[k])))
+    fine = [k for k, c in enumerate(keep) if clev[c] == 2]
+    if fine:
+        picks.append(("a level-2 cell (0.125 mm)", fine[len(fine) // 2]))
+    picks.append(("first kept cell (at the cut)", min(range(nk), key=lambda k: (b2[k][0], b2[k][2]))))
+    picks.append(("last kept cell (old outlet)", newc[owner[rows[ny // 2]]]))
+    picks.append(("first new cell", C(0, ny // 2)))
+    print(f"   {'cell':30s} {'source x, y (m)':>22s} {'new x, y (m)':>22s}   p (Pa) source -> new        T (K) source -> new")
+    for label, k in picks:
+        a, b, y0, y1 = b2[k]
+        nx_, ny_ = (a + b) / 2, (y0 + y1) / 2
+        if k < nk:
+            c = keep[k]
+            sx, sy = (boxes[c][0] + boxes[c][1]) / 2, (boxes[c][2] + boxes[c][3]) / 2
+            src = f"{sx:10.6f}, {sy:9.6f}"
+            sp, st = f"{psrc[c]:12.2f}", f"{Ts[c]:8.2f}"
+        else:
+            src, sp, st = f"{'(new)':>21s}", f"{'-':>12s}", f"{'-':>8s}"
+        print(f"   {label:30s} {src:>22s} {nx_:10.6f}, {ny_:9.6f}   {sp} -> {p2[k]:12.2f}   {st} -> {T2[k]:8.2f}")
     print("   cut done: kept cells and values are identical to the source (shifted); fresh base cells appended")
 
 

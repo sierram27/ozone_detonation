@@ -326,6 +326,9 @@ source cells per base cell: {1: 45840, 4: 124, 7: 3, 10: 113, 13: 11, 16: 1909}
 - `check`, as in the averaging version.
 - OpenFOAM `checkMesh`. If it does not print `Mesh OK`, the source mesh is checked too, and the job only continues if the new mesh has no more failed checks than the source.
 - `decomposePar`, and a check that each processor received the refinement data.
+- **For inspection:**
+  - The log prints a table of sample cells (leading shock cell, highest p, a level-2 cell, the cells at the cut and the joint, the first new cell): source position → new position, with p and T.
+  - The job writes a VTK of the new start: `$WORK/ozone_detonation/runs/<NEW_RUN>/<NEW_RUN>_start_vtk_<time>.tar.gz`. Moved +SHIFT in ParaView, it must match the source save cell for cell.
 
 **Local test (2026-11-20, synthetic files):**
 - **The mesh:** 20 × 4 base cells, with refined cells (levels 1 and 2, hanging nodes) in the dropped region, at the cut line and in the kept region.

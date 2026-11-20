@@ -500,6 +500,12 @@ What you should see:
   - `cut done`
   - `checkMesh: Mesh OK`, or the comparison with the source mesh accepted
   - `refinement data decomposed`
+  - a small table of sample cells: source x, y → new x, y, with p and T. The new x must be the source x − 0.300000, the same y, and identical p and T. The "first new cell" must be fresh gas (6670 Pa, 298 K)
+  - `[6] VTK of the new start`: `$WORK/ozone_detonation/runs/prop1_cycle1/prop1_cycle1_start_vtk_0.00026.tar.gz`
+- **To see the shift in ParaView:**
+  1. Download that file and `prop1/prop1_vtk_0.00026.tar.gz` (the source save), as in part 10.
+  2. Open both. On the new one, apply **Filters → Transform**, Translate (0.3, 0, 0).
+  3. Colour both by `p` and turn on **Surface With Edges**. From x = 0.3 m onward, the two must match cell for cell. The new one ends at 0.6 m with coarse fresh cells.
 - (`MODE=average` instead prints `base cells filled: … source cells per base cell: {1: …, 4: …, 16: …}` and `mapped 13 fields`)
 - `max |sum - 1|` very small (below 1e-6)
 - `cells beyond x = 0.200 m (not copied): …, of which not fresh gas: 0`

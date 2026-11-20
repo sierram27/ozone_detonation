@@ -146,6 +146,13 @@ if [ "$MODE" = cut ]; then
         [ -f processor0/constant/polyMesh/$f ] || { echo "ERROR: decomposePar did not write $f for the processors"; exit 1; }
     done
     echo "   refinement data decomposed: processor0/constant/polyMesh has cellLevel pointLevel refinementHistory"
+    # VTK of the new run's start for ParaView (mesh from constant/polyMesh, fields at $T), to compare with
+    # the source save (e.g. prop1_vtk_0.00026.tar.gz): moved +SHIFT in x, the kept part must match exactly
+    echo "== [6] VTK of the new start for ParaView"
+    foamToVTK -time "$T" -fields "(p T U maxp H2O OH)" > log.foamToVTK 2>&1 || { tail -20 log.foamToVTK; exit 1; }
+    mkdir -p "$WORK/ozone_detonation/runs/$NEW_RUN"
+    VTKTAR=$WORK/ozone_detonation/runs/$NEW_RUN/${NEW_RUN}_start_vtk_$T.tar.gz
+    tar czf "$VTKTAR" VTK && rm -rf VTK && ls -la "$VTKTAR" | awk '{ print "   " $5 " bytes: " $NF }'
 fi
 ls processor0/"$T" | tr '\n' ' ' | sed 's/^/   processor0\/'"$T"': /'; echo
 
