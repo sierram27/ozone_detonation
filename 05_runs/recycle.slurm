@@ -8,21 +8,28 @@
 #SBATCH -o det_recycle_%j.log
 #
 # Window recycling ("option B"): move the detonation back in the 0.5 m channel so it can keep going.
-#   1. reconstruct the latest save of run SRC_RUN (reconstructParMesh + reconstructPar)
-#   2. copy it and shift the copy left by SHIFT m (the old x = SHIFT..0.5 m becomes 0..0.5-SHIFT m)
-#   3. new run folder NEW_RUN: case settings from the repo, the 0.5 m base mesh (0.5 mm cells), fresh gas
-#   4. recycle_fields.py map: every 0.5 mm base cell gets the area-weighted average of the 1, 4 or 16
-#      shifted source cells inside it (maxp: their maximum); beyond 0.5-SHIFT m stays fresh gas.
-#      (OpenFOAM 8 mapFields was tried first and was still searching cells after 15 min, job 3740579.)
-#   5. checks, decomposePar, .decomposed_ok -> ready for cycle_run.slurm
+# Two ways (MODE):
+#   MODE=cut (default, "cut and append"):
+#     1. reconstruct the latest save of run SRC_RUN (reconstructParMesh + reconstructPar; reconstructPar
+#        also rebuilds the refinement data cellLevel, pointLevel, refinementHistory)
+#     2. new run folder NEW_RUN: case settings from the repo, fresh-gas fields
+#     3. recycle_fields.py cut: keep the solver's own refined cells at x >= SHIFT EXACTLY (mesh, values and
+#        refinement data, no averaging), shift them left by SHIFT, drop x < SHIFT (burned gas), and append
+#        SHIFT m of fresh 0.5 mm base cells on the right. The new mesh goes to NEW_RUN/constant/polyMesh.
+#     4. checks (recycle_fields.py self-check + check, OpenFOAM checkMesh)
+#     5. decomposePar (carries the refinement data to the 96 processors) -> ready for cycle_run.slurm
+#   MODE=average (the first version, used for job 3740666):
+#     the shifted solution is averaged onto the plain 0.5 m base mesh (recycle_fields.py map: every 0.5 mm
+#     base cell gets the area-weighted average of the 1, 4 or 16 source cells inside it, maxp their maximum).
+#     (OpenFOAM 8 mapFields was tried first and was still searching cells after 15 min, job 3740579.)
 # Lab position = domain position + OFFSET. OFFSET adds up over cycles; it is written to
 # $SCRATCH/ozone_detonation/$NEW_RUN/recycle_info.txt (and to $WORK/ozone_detonation/runs/$NEW_RUN).
 # The source run is not changed, except that its latest save is reconstructed (as to_vtk.slurm does).
 #
 # Usage (submit from $SCRATCH/ozone_detonation/logs):
-#   sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_runs/recycle.slurm
+#   sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_runs/recycle.slurm      (MODE=cut)
 #   sbatch --export=ALL,SRC_RUN=prop1_cycle1,NEW_RUN=prop1_cycle2 ~/ozone_detonation/05_runs/recycle.slurm   (next cycle)
-# Variables: SRC_RUN (default prop1), NEW_RUN (default prop1_cycle1), SHIFT (default 0.30 m),
+# Variables: MODE (cut | average, default cut), SRC_RUN (default prop1), NEW_RUN (default prop1_cycle1), SHIFT (default 0.30 m),
 #            NP (default 96 = MPI ranks of the next run, for decomposePar)
 # Cost: 1 node, about 10 min (limit 30 min) = at most 0.5 SU.
 # What mapping does to the solution, and why: 05_runs/README.md, "Window recycling".
@@ -32,6 +39,8 @@ case "${SLURM_SUBMIT_DIR:-}" in "$HOME"|"$HOME"/*) echo "WARNING: submitted from
 SRC_RUN=${SRC_RUN:-prop1}
 NEW_RUN=${NEW_RUN:-prop1_cycle1}
 SHIFT=${SHIFT:-0.30}
+MODE=${MODE:-cut}
+case "$MODE" in cut|average) ;; *) echo "ERROR: MODE must be cut or average"; exit 1;; esac
 NP=${NP:-96}
 L=0.5; NCELLS=120000; DXC=0.0005      # base mesh (system/blockMeshDict: 1000 x 120 cells, 0.5 x 0.06 m)
 FIELDS="p T U maxp H H2 O O2 OH H2O HO2 H2O2 AR"
@@ -57,7 +66,7 @@ T=$(ls -d processor0/[0-9]* | sed 's|processor0/||' | sort -g | tail -1)
 PREV=$(sed -n 's/^OFFSET=//p' recycle_info.txt 2>/dev/null); PREV=${PREV:-0}
 OFFSET=$(awk -v a="$PREV" -v b="$SHIFT" 'BEGIN { print a + b }')
 echo "== Source $SRC, latest save t = $T s; shift $SHIFT m; lab offset $PREV -> $OFFSET m"
-echo "== New run $NEW"
+echo "== New run $NEW (MODE=$MODE)"
 
 # ---------------------------------------------------------------- [1] reconstruct the source save
 echo "== [1] reconstruct t = $T"
@@ -67,6 +76,41 @@ fi
 reconstructPar -time "$T" -fields "($FIELDS)" > log.reconstructPar.recycle 2>&1 || { tail -20 log.reconstructPar.recycle; exit 1; }
 grep -m1 note "$T/polyMesh/owner" | sed 's/^ */   source mesh: /'
 
+if [ "$MODE" = cut ]; then
+# ---------------------------------------------------------------- [2] new run folder with fresh gas
+echo "== [2] new run folder: settings from $CASE_SRC, fresh-gas fields"
+for f in cellLevel pointLevel refinementHistory; do
+    [ -f "$T/polyMesh/$f" ] || { echo "ERROR: $SRC/$T/polyMesh/$f missing (refinement data not reconstructed)"; exit 1; }
+done
+mkdir -p "$NEW"; cd "$NEW"
+cp -r "$CASE_SRC"/{constant,system} .
+rm -rf constant/polyMesh
+AMB=$NEW/ambient.json
+py ambient "$SRC/$T" "$AMB" || exit 1
+py target "$CASE_SRC/0" "$T" "$AMB" || exit 1
+
+# ---------------------------------------------------------------- [3] cut and append
+echo "== [3] cut at x = $SHIFT m, shift left, append $SHIFT m of fresh base cells"
+py cut "$SRC/$T" "$T" constant/polyMesh "$SHIFT" $L $DXC || exit 1
+
+# ---------------------------------------------------------------- [4] checks
+echo "== [4] checks"
+py check "$T" "$AMB" constant/polyMesh $L "$SHIFT" "$OFFSET" || exit 1
+checkMesh -latestTime > log.checkMesh 2>&1
+grep -E "^ *(cells|points|faces):|Mesh OK|Failed [0-9]+ mesh check|\*\*\*" log.checkMesh | sed 's/^ */   checkMesh: /'
+if ! grep -q "Mesh OK" log.checkMesh; then
+    # The source mesh is refined the same way; compare with it before deciding (sets are written to a copy)
+    echo "   checkMesh did not report 'Mesh OK'; checking the source mesh for comparison"
+    CHK=$SCRATCH/ozone_detonation/${NEW_RUN}_checksrc; rm -rf "$CHK"; mkdir -p "$CHK/constant"
+    cp -r "$CASE_SRC/system" "$CHK/"; cp -r "$SRC/$T/polyMesh" "$CHK/constant/"
+    checkMesh -case "$CHK" > log.checkMesh.source 2>&1
+    grep -E "Mesh OK|Failed [0-9]+ mesh check|\*\*\*" log.checkMesh.source | sed 's/^ */   source checkMesh: /'
+    nf() { sed -n 's/.*Failed \([0-9]*\) mesh check.*/\1/p' "$1" | tail -1; }
+    NN=$(nf log.checkMesh); NS=$(nf log.checkMesh.source); rm -rf "$CHK"
+    [ "${NN:-0}" -le "${NS:-0}" ] || { echo "ERROR: new mesh fails more checkMesh tests ($NN) than the source ($NS)"; exit 1; }
+    echo "   same or fewer checkMesh failures as the source mesh ($NN vs ${NS:-0}): accepted"
+fi
+else
 # ---------------------------------------------------------------- [2] shifted copy
 echo "== [2] shifted copy in $MAPSRC"
 mkdir -p "$MAPSRC/$T"
@@ -87,6 +131,8 @@ py target "$CASE_SRC/0" "$T" "$MAPSRC/ambient.json" || exit 1
 echo "== [4] map: average the shifted source cells onto the base cells"
 py map "$MAPSRC/$T" "$T" constant/polyMesh $DXC || exit 1
 py check "$T" "$MAPSRC/ambient.json" constant/polyMesh $L "$SHIFT" "$OFFSET" || exit 1
+cp "$MAPSRC/ambient.json" .
+fi
 
 # ---------------------------------------------------------------- [5] decompose (as in smoke.slurm)
 NY=$((NP / 16)); [ $((16 * NY)) -eq "$NP" ] || { echo "ERROR: NP=$NP must be a multiple of 16"; exit 1; }
@@ -95,13 +141,19 @@ grep -q "(16 $NY 1)" system/decomposeParDict || { echo "ERROR: decomposeParDict 
 echo "== [5] decomposePar: simple (16 $NY 1) = $NP subdomains"
 decomposePar -force -time "$T" > log.decomposePar 2>&1 || { tail -30 log.decomposePar; exit 1; }
 grep -E "^Number of processor faces|^Max number of cells" log.decomposePar | sed 's/^/   /'
+if [ "$MODE" = cut ]; then
+    for f in cellLevel pointLevel refinementHistory; do
+        [ -f processor0/constant/polyMesh/$f ] || { echo "ERROR: decomposePar did not write $f for the processors"; exit 1; }
+    done
+    echo "   refinement data decomposed: processor0/constant/polyMesh has cellLevel pointLevel refinementHistory"
+fi
 ls processor0/"$T" | tr '\n' ' ' | sed 's/^/   processor0\/'"$T"': /'; echo
 
-printf "SOURCE=%s\nSOURCE_TIME=%s\nSHIFT=%s\nOFFSET=%s\nJOB=%s\n" "$SRC_RUN" "$T" "$SHIFT" "$OFFSET" "$SLURM_JOB_ID" > recycle_info.txt
+printf "SOURCE=%s\nSOURCE_TIME=%s\nSHIFT=%s\nOFFSET=%s\nMODE=%s\nJOB=%s\n" "$SRC_RUN" "$T" "$SHIFT" "$OFFSET" "$MODE" "$SLURM_JOB_ID" > recycle_info.txt
 touch .decomposed_ok
 rm -rf "$MAPSRC"
 
 SAVE=$WORK/ozone_detonation/runs/$NEW_RUN; mkdir -p "$SAVE"
-cp recycle_info.txt log.decomposePar "$SAVE"/
+cp recycle_info.txt log.decomposePar "$SAVE"/; [ -f log.checkMesh ] && cp log.checkMesh "$SAVE"/
 echo "== END $(date): $NEW is ready. Lab position = domain position + $OFFSET m."
 echo "   Next: sbatch --export=ALL,RUN_NAME=$NEW_RUN ~/ozone_detonation/05_runs/cycle_run.slurm"

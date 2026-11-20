@@ -180,14 +180,14 @@ Results: `results/prop1_200us/` (shock speed, fields over the whole channel, max
   - 150 174 cells
   - The 260 µs snapshot is in `$WORK/ozone_detonation/runs/prop1/snapshot_0.00026` (3360 files, 157 MB).
 
-## Window recycling past 0.5 m ("option B", prepared 2026-11-19, not yet run)
+## Window recycling past 0.5 m ("option B", prepared 2026-11-19; "cut and append" version 2026-11-20)
 The goal is to run far enough for the cellular structure to settle, an estimated 0.5–1.0 m more. The channel stays 0.5 m long. Each **cycle** runs until the front reaches 0.475 m. Then `recycle.slurm` shifts the solution 0.30 m to the left and starts the next cycle.
 
 | Script | What it does | Cost |
 |---|---|---|
-| `recycle.slurm` | 1. Reconstructs the latest save of `SRC_RUN`.<br>2. Copies it and shifts the copy by −`SHIFT` (`recycle_fields.py shift`).<br>3. Creates `NEW_RUN`: repo settings, the 120 000-cell base mesh, fresh gas everywhere. The fresh-gas state is read from the cells ahead of the front and checked to be uniform.<br>4. Averages the shifted cells onto the base cells (`recycle_fields.py map`).<br>5. Runs checks, then `decomposePar`, then writes `.decomposed_ok`. | 1 node, ≤ 30 min, ≤ 0.5 SU |
+| `recycle.slurm` | **`MODE=cut` (default since 2026-11-20):** reconstructs the latest save of `SRC_RUN` (with its refinement data), keeps the refined cells at x ≥ `SHIFT` exactly, shifts them left, drops the rest and appends fresh 0.5 mm cells (`recycle_fields.py cut`), then checks, `checkMesh` and `decomposePar`. See "Cut and append" below.<br>**`MODE=average`** (the first version, job 3740666): 1. reconstructs the latest save; 2. copies and shifts it (`shift`); 3. creates `NEW_RUN` on the 120 000-cell base mesh with fresh gas (the fresh-gas state is read from the cells ahead of the front and checked to be uniform); 4. averages the shifted cells onto the base cells (`map`); 5. checks, `decomposePar`, `.decomposed_ok`. | 1 node, ≤ 30 min, ≤ 0.5 SU |
 | `cycle_run.slurm` | `smoke.slurm` with `SW_LIMIT=0.475`, `WRITE_INT=1e-6`. It refuses a folder without `.decomposed_ok`, because `smoke.slurm` would otherwise restart it from the ZND state at t = 0. Resubmit the same command until the cycle reaches 0.475 m. | 2 nodes, 2 h, ≤ 4 SU per job; about 4.5 h (≈ 9 SU) per cycle |
-| `recycle_fields.py` | Plain-Python helper: `shift`, `ambient`, `target`, `check` | — |
+| `recycle_fields.py` | Plain-Python helper: `shift`, `ambient`, `target`, `map`, `cut`, `check` | — |
 
 **Chain:** `prop1` (to 0.475 m) → recycle → `prop1_cycle1` → recycle → `prop1_cycle2` → …
 - **Naming:** `cycleN` means the N-th 0.30 m window of option B. It is not option C1 or C2 (a longer domain), which was not chosen.
@@ -203,7 +203,6 @@ The goal is to run far enough for the cellular structure to settle, an estimated
 - **The burned gas is cut.** Only about 0.175 m of burned gas is kept behind the front. The left boundary is `zeroGradient`, as before.
 - **Recovery is not yet known.** In cycle 1, compare the collision spacing and the maxp peaks before the recycle (prop1, 400–475 mm) with those after it.
 - **Cells not covered by the shifted solution keep the fresh gas.** `check` verifies that every cell beyond 0.5 − SHIFT is still fresh gas. It reads cell positions from the mesh rather than assuming a cell order.
-- **`rho` is not mapped.** The solver computes it from the thermodynamic state (`IOobject::NO_READ`), and `rhoU`/`rhoE` likewise.
 - **`rho` is not mapped.** The solver computes it from the thermodynamic state (`IOobject::NO_READ`), and `rhoU`/`rhoE` likewise.
 
 **Checks in `recycle_fields.py check`** (any failure stops the job before `.decomposed_ok`):
@@ -299,6 +298,53 @@ source cells per base cell: {1: 45840, 4: 124, 7: 3, 10: 113, 13: 11, 16: 1909}
 **Folder:** `.decomposed_ok` was written, the temporary `prop1_cycle1_mapsource` was removed, and `recycle_info.txt` (OFFSET = 0.3) and `log.decomposePar` were copied to `$WORK/ozone_detonation/runs/prop1_cycle1/`.
 
 **Not yet known:** whether the solver runs cleanly from this state, and how fast the front recovers. That is the first `cycle_run.slurm` job.
+
+**Superseded (2026-11-20):** the user chose "cut and append" (below), which keeps the front unaveraged. This averaged folder was not run. Rename it to `prop1_cycle1_avg` before making the new `prop1_cycle1`; it can serve as a comparison.
+
+### Cut and append (`MODE=cut`, written 2026-11-20, not yet run on Stampede3)
+**Idea (the user's):** as the front moves right, the cells far behind it have coarsened back to 0.5 mm. So instead of averaging the whole solution onto a new mesh, keep the solver's own mesh and values from x = SHIFT onward unchanged, drop the burned gas at x < SHIFT, and add SHIFT m of fresh 0.5 mm cells ahead of the front.
+
+**What was checked before writing it** (read-only, on Stampede3):
+- The solver's refinement code (`dynamicMesh2D/.../hexRef82D.C`) reads `cellLevel`, `pointLevel` and `refinementHistory` from the mesh folder at start-up. It stops with a fatal error if their sizes do not match the mesh, and it checks the refinement levels and the mesh for consistency. If `cellLevel` were lost, the 0.125 mm cells would count as base cells and be refined twice more, to 0.03 mm.
+- OpenFOAM 8's `reconstructPar` and `decomposePar` carry all three files (`hexRef8Data`). The 260 µs reconstruction of `prop1` has them: `0.00026/polyMesh/{cellLevel,pointLevel,refinementHistory}`, 150 174 cells, 42 392 split-cell entries.
+- So only the cut itself needs new code. Reconstructing and decomposing are standard steps.
+
+**`recycle_fields.py cut`:**
+- Works on the reconstructed source mesh (`polyMesh` files), which it only reads.
+- Keeps every cell with x ≥ SHIFT, with its values, `cellLevel`, the `pointLevel` of its points and its refinement tree. Each tree lies inside one base cell, so a tree is kept or dropped whole. The trees are renumbered.
+- Faces between kept and dropped cells become the new `inlet` patch, turned to point outward where needed.
+- The old outlet column becomes the joint to SHIFT/0.5 mm × 120 new base cells (level 0, no refinement history), filled with the fresh-gas state from `ambient`/`target`. It requires the outlet column to be plain base cells; refinement reaching the outlet stops the job.
+- Writes the new mesh to `NEW_RUN/constant/polyMesh` and the fields to `NEW_RUN/<time>`. Internal faces are put in the order OpenFOAM requires.
+- **Self-check from the written files:**
+  - every kept cell is exactly its source cell shifted by −SHIFT
+  - every new cell is the expected 0.5 mm square
+  - total area = 0.5 × 0.06 m²
+  - no face normal points into its owner cell
+  - the kept p values are identical to the source
+
+**Then in `recycle.slurm`:**
+- `check`, as in the averaging version.
+- OpenFOAM `checkMesh`. If it does not print `Mesh OK`, the source mesh is checked too, and the job only continues if the new mesh has no more failed checks than the source.
+- `decomposePar`, and a check that each processor received the refinement data.
+
+**Local test (2026-11-20, synthetic files):**
+- **The mesh:** 20 × 4 base cells, with refined cells (levels 1 and 2, hanging nodes) in the dropped region, at the cut line and in the kept region.
+- **Result:** all checks passed.
+  - Kept: 44 cells (levels 0/1/2: 29/11/4). 51 dropped, 4 of them refined.
+  - 5 inlet faces at the cut (one cut base cell is refined).
+  - 19 of 24 split-cell entries kept.
+  - No misplaced cells and no inward faces.
+- **It correctly refused:** refinement at the outlet, and a shift that is not a whole number of base cells.
+- **Not tested locally:** OpenFOAM itself (`checkMesh`, `decomposePar`, and the solver's own refinement checks). That happens in the recycle job and in the first cycle job.
+
+**What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
+
+**First use** (the user submits):
+1. Rename the averaged folder.
+2. Make `prop1_cycle1` with `MODE=cut`.
+3. Run a **30-min** cycle test: `sbatch -t 00:30:00 …`, ≤ 1 SU.
+   - **Pass:** the solver starts without a refinement error, the cell count stays near 150 k with no jump from over-refinement, and cells behind the front coarsen normally.
+4. Then the full cycle.
 
 ## Continuation to 475 mm: how it was prepared
 `prop1_to_475mm.slurm` continues `prop1` from 200 µs (shock at 375.7 mm) until the leading shock reaches x = 0.475 m. It sets `RUN_NAME=prop1`, `WRITE_INT=1e-6`, `END_TIME=3e-4` (backstop) and `SW_LIMIT=0.475`, then runs `smoke.slurm`.

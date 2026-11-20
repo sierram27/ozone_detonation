@@ -459,9 +459,9 @@ The soot-foil record `maxp` moves with the shift. Each cycle adds 0.30 m of trav
 **Lab position = domain position + OFFSET.** The OFFSET is in `<run folder>/recycle_info.txt` (0.30 for `prop1_cycle1`, 0.60 for `prop1_cycle2`, …). Positions printed in the solver log are **domain** positions (0–0.5 m).
 
 **What it costs the physics:**
-- Each recycle averages the 0.125 mm front cells onto 0.5 mm cells. The adaptive mesh refinement (AMR) rebuilds the fine cells within a few steps, but the lost detail stays lost.
-- Each recycle also drops the burned gas far behind the front.
-- So the soot foil just after a recycle shows the front recovering. Judge regularity on the later part of each cycle, and compare cycles with each other.
+- **Default, `MODE=cut` ("cut and append", since 2026-11-20):** the cells at x ≥ 0.30 m are kept exactly as the solver left them: same fine cells, same values, same refinement data. They are only moved 0.30 m to the left. The burned gas at x < 0.30 m is dropped, and 0.30 m of fresh 0.5 mm cells are added on the right. The front itself is not disturbed.
+- **Older `MODE=average`:** averages the 0.125 mm front cells onto 0.5 mm cells. The lost detail stays lost, so the soot foil just after the recycle shows the front recovering.
+- **Both modes** drop the burned gas more than about 0.175 m behind the front. Compare cycles with each other to see whether that matters.
 
 **Cost per cycle:** about 190 µs of simulated time, about 4.5 h on 2 nodes, about 9 SU. That is three 2 h jobs, plus one recycle job of under 0.5 SU.
 
@@ -479,6 +479,11 @@ sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_run
 - For the next cycles, use `SRC_RUN=prop1_cycle1,NEW_RUN=prop1_cycle2`, then `SRC_RUN=prop1_cycle2,NEW_RUN=prop1_cycle3`, and so on.
 - The job takes about 10 minutes. The source run is not changed.
 - If `NEW_RUN` already exists and is complete, the job stops without touching it.
+- **Only once (2026-11-20):** an averaged `prop1_cycle1` was made with the old method and never run. Rename it first, so the name is free:
+  ```bash
+  mv $SCRATCH/ozone_detonation/prop1_cycle1 $SCRATCH/ozone_detonation/prop1_cycle1_avg
+  mv $WORK/ozone_detonation/runs/prop1_cycle1 $WORK/ozone_detonation/runs/prop1_cycle1_avg
+  ```
 
 **9b.3 Check the recycle job**
 
@@ -488,7 +493,14 @@ tail -30 $SCRATCH/ozone_detonation/logs/det_recycle_<jobid>.log
 ```
 What you should see:
 - `fresh gas from … cells ahead of the front: p = 6670 Pa, T = 298 K, U = (0, 0, 0)`
-- `base cells filled: … source cells per base cell: {1: …, 4: …, 16: …}` and `mapped 13 fields`
+- `MODE=cut`:
+  - `kept: …, cells per refinement level {0: …, 1: …, 2: …}`
+  - `appended base cells: 600 x 120 = 72000`
+  - `self-check: cells in the wrong place: 0; … faces pointing into their owner: 0`
+  - `cut done`
+  - `checkMesh: Mesh OK`, or the comparison with the source mesh accepted
+  - `refinement data decomposed`
+- (`MODE=average` instead prints `base cells filled: … source cells per base cell: {1: …, 4: …, 16: …}` and `mapped 13 fields`)
 - `max |sum - 1|` very small (below 1e-6)
 - `cells beyond x = 0.200 m (not copied): …, of which not fresh gas: 0`
 - `leading shock … x = 0.17… m in the domain = 0.47… m lab` (for `prop1_cycle1`; one OFFSET more for each later cycle)
