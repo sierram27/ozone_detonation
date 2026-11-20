@@ -423,6 +423,9 @@ source cells per base cell: {1: 45840, 4: 124, 7: 3, 10: 113, 13: 11, 16: 1909}
    | 3734119 | 30 min | (2 nodes) | `$SCRATCH` | ran 0:22 (185 → 200 µs) |
    | 3734177 | 20 min, **1 node** (analysis) | (1 node) | `$SCRATCH` | cancelled at 2:02 |
    | 3734187 | 20 min, 1 node (analysis) | (1 node) | `$SCRATCH` | ran |
+   | 3743522 (2026-11-20, user-submitted) | 30 min, 1 node (recycle, `MODE=prepared`) | c454-022 | `$SCRATCH` | cancelled at 2:03, no log; uploaded `prop1_cycle1` untouched |
+
+   - **2026-11-20:** the first cancellation of a job **the user submitted by hand**, and of a 30-min job. So it is not caused by submitting through the AI tool, nor by the length of the job. Before it started, `skx-dev` had stalled for about 2 h: 70 idle nodes, 0 running, 76 waiting.
 
    - **Not a node problem:** the same nodes both ran and failed jobs.
    - **Not `$HOME`:** an earlier guess, disproved by 3732551 and 3732983.
