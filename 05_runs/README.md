@@ -340,6 +340,38 @@ source cells per base cell: {1: 45840, 4: 124, 7: 3, 10: 113, 13: 11, 16: 1909}
 - **It correctly refused:** refinement at the outlet, and a shift that is not a whole number of base cells.
 - **Not tested locally:** OpenFOAM itself (`checkMesh`, `decomposePar`, and the solver's own refinement checks). That happens in the recycle job and in the first cycle job.
 
+**Preview on the real data, on the user's laptop (2026-11-20; no job, no SU).** The user asked for the cut to be checked locally, without running anything on Stampede3.
+- **The data:** the reconstructed 260 µs save of `prop1` (mesh with refinement data plus the 13 fields, 63 MB), downloaded to `local_data/prop1_0.00026/`. The cut ran in about 5 s to `local_data/prop1_cycle1_cut/`.
+- **What the cut reported:**
+  ```
+  source: 150174 cells; removed (x < 0.3 m): 72000 (of them refined: 0); kept: 78174, cells per refinement level {0: 45840, 1: 742, 2: 31592}
+  new inlet faces at the cut: 120; appended base cells: 600 x 120 = 72000
+  new mesh: nPoints:303472  nCells:150174  nFaces:602257  nInternalFaces:299567
+  refinementHistory: 42392 of 42392 split-cell entries kept
+  self-check: cells in the wrong place: 0; total area 0.030000000 m2 (expected 0.030000000); faces pointing into their owner: 0
+  leading shock cell   source 0.473938, 0.046437 -> new 0.173937, 0.046437   p 103213.93 -> 103213.93   T 1577.52 -> 1577.52
+  a level-2 cell       source 0.468063, 0.035063 -> new 0.168063, 0.035063   p 170121.55 -> 170121.55   T 2232.76 -> 2232.76
+  first kept cell      source 0.300250, 0.000250 -> new 0.000250, 0.000250   p 140339.88 -> 140339.88
+  first new cell                               new 0.200250, 0.030250   p 6670.00, T 298.00
+  ```
+  - All 72 000 dropped cells were unrefined, as expected far behind the front, so every refinement tree was kept.
+  - The cell, face and point counts happen to equal the source's, because 72 000 base cells were removed and 72 000 added.
+- **`check`:**
+  - max |ΣY − 1| = 9.7e-13
+  - all 72 000 cells beyond 0.2 m are fresh gas
+  - leading shock at 0.17394 m in the domain = 0.47394 m lab
+  - 0.174 m of burned gas kept
+  - all checks passed
+- **ParaView (`05_runs/compare_cut_paraview.py`, run with `pvbatch` from ParaView 6.2.1).** It reads both cases with ParaView's OpenFOAM reader and moves the new one back by +0.30 m.
+  - All 78 174 kept cells are found at the same position in the source, and the largest p difference is 0.0 Pa.
+  - The 72 000 appended cells are all at 6670 Pa.
+  - Images are in `results/cycle1_cut_check/`:
+    - `full`: the whole channel
+    - `front`: the front with its 0.125 mm cells, identical cell by cell
+    - `cut`: the new inlet at lab 0.3 m
+    - `end`: the old outlet followed by the appended 0.5 mm cells
+- **Still to do on Stampede3:** `checkMesh`, `decomposePar`, and the solver's own refinement checks at start-up. Python and ParaView cannot do these.
+
 **What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
 
 **First use** (the user submits):
