@@ -8,7 +8,7 @@
 #SBATCH -o det_recycle_%j.log
 #
 # Window recycling ("option B"): move the detonation back in the 0.5 m channel so it can keep going.
-# Two ways (MODE):
+# Three ways (MODE):
 #   MODE=cut (default, "cut and append"):
 #     1. reconstruct the latest save of run SRC_RUN (reconstructParMesh + reconstructPar; reconstructPar
 #        also rebuilds the refinement data cellLevel, pointLevel, refinementHistory)
@@ -18,6 +18,10 @@
 #        SHIFT m of fresh 0.5 mm base cells on the right. The new mesh goes to NEW_RUN/constant/polyMesh.
 #     4. checks (recycle_fields.py self-check + check, OpenFOAM checkMesh)
 #     5. decomposePar (carries the refinement data to the 96 processors) -> ready for cycle_run.slurm
+#   MODE=prepared: the cut was already made elsewhere (e.g. with recycle_fields.py on a laptop) and uploaded
+#     to $SCRATCH/ozone_detonation/NEW_RUN (constant/polyMesh with refinement data, <time>/ fields,
+#     ambient.json, MANIFEST.md5). The job verifies the upload against MANIFEST.md5, adds the case settings
+#     from the repo and does steps 4-5 only (checks, checkMesh, decomposePar). The source is not touched.
 #   MODE=average (the first version, used for job 3740666):
 #     the shifted solution is averaged onto the plain 0.5 m base mesh (recycle_fields.py map: every 0.5 mm
 #     base cell gets the area-weighted average of the 1, 4 or 16 source cells inside it, maxp their maximum).
@@ -28,8 +32,9 @@
 #
 # Usage (submit from $SCRATCH/ozone_detonation/logs):
 #   sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_runs/recycle.slurm      (MODE=cut)
+#   sbatch --export=ALL,MODE=prepared,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_runs/recycle.slurm   (uploaded cut)
 #   sbatch --export=ALL,SRC_RUN=prop1_cycle1,NEW_RUN=prop1_cycle2 ~/ozone_detonation/05_runs/recycle.slurm   (next cycle)
-# Variables: MODE (cut | average, default cut), SRC_RUN (default prop1), NEW_RUN (default prop1_cycle1), SHIFT (default 0.30 m),
+# Variables: MODE (cut | prepared | average, default cut), SRC_RUN (default prop1), NEW_RUN (default prop1_cycle1), SHIFT (default 0.30 m),
 #            NP (default 96 = MPI ranks of the next run, for decomposePar)
 # Cost: 1 node, about 10 min (limit 30 min) = at most 0.5 SU.
 # What mapping does to the solution, and why: 05_runs/README.md, "Window recycling".
@@ -40,7 +45,7 @@ SRC_RUN=${SRC_RUN:-prop1}
 NEW_RUN=${NEW_RUN:-prop1_cycle1}
 SHIFT=${SHIFT:-0.30}
 MODE=${MODE:-cut}
-case "$MODE" in cut|average) ;; *) echo "ERROR: MODE must be cut or average"; exit 1;; esac
+case "$MODE" in cut|average|prepared) ;; *) echo "ERROR: MODE must be cut, average or prepared"; exit 1;; esac
 NP=${NP:-96}
 L=0.5; NCELLS=120000; DXC=0.0005      # base mesh (system/blockMeshDict: 1000 x 120 cells, 0.5 x 0.06 m)
 FIELDS="p T U maxp H H2 O O2 OH H2O HO2 H2O2 AR"
@@ -58,7 +63,11 @@ echo "== Job $SLURM_JOB_ID on $(hostname) at $(date)"
 [ -f "$SRC/.decomposed_ok" ] || { echo "ERROR: $SRC is not a run folder (no .decomposed_ok)"; exit 1; }
 [ "$SRC" != "$NEW" ] || { echo "ERROR: NEW_RUN must differ from SRC_RUN"; exit 1; }
 [ -f "$NEW/.decomposed_ok" ] && { echo "ERROR: $NEW already exists and is complete. Pick another NEW_RUN (nothing was changed)."; exit 1; }
-[ -d "$NEW" ] && { echo "   removing incomplete $NEW from an earlier failed attempt"; rm -rf "$NEW"; }
+if [ "$MODE" = prepared ]; then
+    [ -f "$NEW/MANIFEST.md5" ] || { echo "ERROR: MODE=prepared needs the uploaded $NEW with MANIFEST.md5"; exit 1; }
+else
+    [ -d "$NEW" ] && { echo "   removing incomplete $NEW from an earlier failed attempt"; rm -rf "$NEW"; }
+fi
 rm -rf "$MAPSRC"
 
 cd "$SRC"
@@ -69,12 +78,34 @@ echo "== Source $SRC, latest save t = $T s; shift $SHIFT m; lab offset $PREV -> 
 echo "== New run $NEW (MODE=$MODE)"
 
 # ---------------------------------------------------------------- [1] reconstruct the source save
+if [ "$MODE" = prepared ]; then
+echo "== [1] skipped (MODE=prepared: the cut was made from the reconstructed save beforehand)"
+else
 echo "== [1] reconstruct t = $T"
 if [ ! -f "$T/polyMesh/faces" ]; then
     reconstructParMesh -time "$T" -mergeTol 1e-6 > log.reconstructParMesh.recycle 2>&1 || { tail -20 log.reconstructParMesh.recycle; exit 1; }
 fi
 reconstructPar -time "$T" -fields "($FIELDS)" > log.reconstructPar.recycle 2>&1 || { tail -20 log.reconstructPar.recycle; exit 1; }
 grep -m1 note "$T/polyMesh/owner" | sed 's/^ */   source mesh: /'
+fi
+
+if [ "$MODE" = prepared ]; then
+# ---------------------------------------------------------------- [2]+[3] uploaded run folder
+echo "== [2] uploaded run folder: verify it, add the case settings from $CASE_SRC"
+cd "$NEW"
+md5sum --quiet -c MANIFEST.md5 || { echo "ERROR: upload does not match MANIFEST.md5 (incomplete or changed copy)"; exit 1; }
+echo "   $(wc -l < MANIFEST.md5) files match MANIFEST.md5"
+[ -f "$T/p" ] || { echo "ERROR: uploaded fields are not at the source's latest time $T"; exit 1; }
+for f in cellLevel pointLevel refinementHistory; do
+    [ -f constant/polyMesh/$f ] || { echo "ERROR: uploaded constant/polyMesh/$f missing"; exit 1; }
+done
+mv constant/polyMesh polyMesh.uploaded
+rm -rf constant system case.foam
+cp -r "$CASE_SRC"/{constant,system} .
+rm -rf constant/polyMesh; mv polyMesh.uploaded constant/polyMesh
+AMB=$NEW/ambient.json
+echo "== [3] cut: made before upload ($(grep -m1 note constant/polyMesh/owner | sed 's/^ *//'))"
+fi
 
 if [ "$MODE" = cut ]; then
 # ---------------------------------------------------------------- [2] new run folder with fresh gas
@@ -92,6 +123,9 @@ py target "$CASE_SRC/0" "$T" "$AMB" || exit 1
 # ---------------------------------------------------------------- [3] cut and append
 echo "== [3] cut at x = $SHIFT m, shift left, append $SHIFT m of fresh base cells"
 py cut "$SRC/$T" "$T" constant/polyMesh "$SHIFT" $L $DXC || exit 1
+fi
+
+if [ "$MODE" = cut ] || [ "$MODE" = prepared ]; then
 
 # ---------------------------------------------------------------- [4] checks
 echo "== [4] checks"
@@ -141,18 +175,20 @@ grep -q "(16 $NY 1)" system/decomposeParDict || { echo "ERROR: decomposeParDict 
 echo "== [5] decomposePar: simple (16 $NY 1) = $NP subdomains"
 decomposePar -force -time "$T" > log.decomposePar 2>&1 || { tail -30 log.decomposePar; exit 1; }
 grep -E "^Number of processor faces|^Max number of cells" log.decomposePar | sed 's/^/   /'
-if [ "$MODE" = cut ]; then
+if [ "$MODE" != average ]; then
     for f in cellLevel pointLevel refinementHistory; do
         [ -f processor0/constant/polyMesh/$f ] || { echo "ERROR: decomposePar did not write $f for the processors"; exit 1; }
     done
     echo "   refinement data decomposed: processor0/constant/polyMesh has cellLevel pointLevel refinementHistory"
     # VTK of the new run's start for ParaView (mesh from constant/polyMesh, fields at $T), to compare with
     # the source save (e.g. prop1_vtk_0.00026.tar.gz): moved +SHIFT in x, the kept part must match exactly
+  if [ "$MODE" = cut ]; then
     echo "== [6] VTK of the new start for ParaView"
     foamToVTK -time "$T" -fields "(p T U maxp H2O OH)" > log.foamToVTK 2>&1 || { tail -20 log.foamToVTK; exit 1; }
     mkdir -p "$WORK/ozone_detonation/runs/$NEW_RUN"
     VTKTAR=$WORK/ozone_detonation/runs/$NEW_RUN/${NEW_RUN}_start_vtk_$T.tar.gz
     tar czf "$VTKTAR" VTK && rm -rf VTK && ls -la "$VTKTAR" | awk '{ print "   " $5 " bytes: " $NF }'
+  fi
 fi
 ls processor0/"$T" | tr '\n' ' ' | sed 's/^/   processor0\/'"$T"': /'; echo
 

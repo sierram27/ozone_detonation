@@ -485,6 +485,27 @@ sbatch --export=ALL,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_run
   mv $WORK/ozone_detonation/runs/prop1_cycle1 $WORK/ozone_detonation/runs/prop1_cycle1_avg
   ```
 
+**9b.2b (alternative) Use a cut made on your laptop.** For example, the `prop1_cycle1` that was checked in ParaView on 2026-11-20.
+
+**[Mac]** Upload it. Use the folder that has `MANIFEST.md5`, and copy only what the run needs:
+```bash
+cd ~/Documents/Research/repos/ozone_detonation/local_data/prop1_cycle1_cut
+rsync -av --relative 0.00026 constant/polyMesh ambient.json MANIFEST.md5 \
+    stampede3:/scratch/12029/smartinez627/ozone_detonation/prop1_cycle1/
+```
+
+**[Stampede3]** Finish it: about 5 min, 1 node, ≤ 0.5 SU.
+```bash
+cd $SCRATCH/ozone_detonation/logs
+sbatch --export=ALL,MODE=prepared,SRC_RUN=prop1,NEW_RUN=prop1_cycle1 ~/ozone_detonation/05_runs/recycle.slurm
+```
+In the log, look for:
+- `22 files match MANIFEST.md5`
+- `checks passed`
+- `checkMesh: Mesh OK`
+- `refinement data decomposed`
+- `is ready`
+
 **9b.3 Check the recycle job**
 
 **[Stampede3]**

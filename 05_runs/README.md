@@ -371,6 +371,12 @@ source cells per base cell: {1: 45840, 4: 124, 7: 3, 10: 113, 13: 11, 16: 1909}
     - `cut`: the new inlet at lab 0.3 m
     - `end`: the old outlet followed by the appended 0.5 mm cells
 - **Still to do on Stampede3:** `checkMesh`, `decomposePar`, and the solver's own refinement checks at start-up. Python and ParaView cannot do these.
+- **The user approved this mesh (2026-11-20) and chose to use it directly.** The new `recycle.slurm MODE=prepared` takes the uploaded folder and does the remaining steps. It does not redo the cut.
+  1. Check the upload against `MANIFEST.md5`: 22 files, i.e. 13 fields, 8 mesh files and `ambient.json`, with checksums made on the laptop.
+  2. Add the case settings from the repo.
+  3. Run `check` and `checkMesh`.
+  4. Run `decomposePar`, and check that each processor received the refinement data.
+  5. Write `recycle_info.txt` (`MODE=prepared`) and `.decomposed_ok`.
 
 **What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
 
