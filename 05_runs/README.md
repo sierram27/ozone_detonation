@@ -378,6 +378,25 @@ source cells per base cell: {1: 45840, 4: 124, 7: 3, 10: 113, 13: 11, 16: 1909}
   4. Run `decomposePar`, and check that each processor received the refinement data.
   5. Write `recycle_info.txt` (`MODE=prepared`) and `.decomposed_ok`.
 
+### Recycle job 3744345 (`MODE=prepared`, 2026-11-21, submitted by the user to `skx`): SUCCEEDED, `prop1_cycle1` ready
+**The wait:** it was submitted Nov 20 at 17:00 and waited about 30 h. For much of that time Stampede3 started almost no jobs, even with hundreds of idle nodes. The first attempt in `skx-dev`, 3743522, was cancelled by uid 0 (problem 5). The job finally ran Nov 21 at 23:02 on c503-014 and took 1 min 43 s (about 0.03 SU).
+```
+22 files match MANIFEST.md5
+sum of mass fractions: max |sum - 1| = 9.68e-13
+cells beyond x = 0.200 m (not copied): 72000, of which not fresh gas: 0
+leading shock: x = 0.17394 m in the domain = 0.47394 m lab (offset 0.3 m)
+burned gas kept behind the front: 0.174 m; cells there hotter than fresh gas + 100 K: 29760 of 29760
+checkMesh: cells: 150174   Mesh OK.
+decomposePar: simple (16 6 1) = 96 subdomains; Max number of cells = 1858 (18.8% above average 1564)
+refinement data decomposed: processor0/constant/polyMesh has cellLevel pointLevel refinementHistory
+```
+- **The upload arrived intact,** and the checks give the same numbers as on the laptop.
+- **OpenFOAM's `checkMesh` accepts the cut mesh:** `Mesh OK`.
+- **`decomposePar` carried the refinement data to the 96 processors.**
+- **Load balance:** the mesh was split after refinement, so the pieces are fairly even. The largest is 18.8 % above the average. During `prop1` the refinement grew after the split, onto the few processors near the front.
+- **Folder:** `recycle_info.txt` has `MODE=prepared`, `OFFSET=0.3` and `JOB=3744345`, and `.decomposed_ok` is written.
+- **Next:** a 30-min cycle test. The solver's own refinement checks (`hexRef82D`) run at start-up.
+
 **What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
 
 **First use** (the user submits):
