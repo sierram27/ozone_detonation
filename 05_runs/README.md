@@ -426,6 +426,24 @@ edge:6233 vertices:(13029 13632) coords:(0.2 0.05775 -0.01)(0.20025 0.0575 0.01)
 
 **State of the run:** `prop1_cycle1` on `$SCRATCH` holds saves 0.000261–0.000273 made with the faulty appended cells. It must be replaced: renamed to `prop1_cycle1_bad1`, and the fixed cut uploaded with `MODE=prepared`.
 
+### Cycle test job 3749428 (2026-11-23, `skx`, 2 nodes, 30 min, submitted by the user), with the fixed cut: PASSED (software)
+**Before it:** the folder was rebuilt from the fixed cut. The old one is `prop1_cycle1_bad1`, and recycle job 3749355 made the new one: all checks passed, `Mesh OK`. A duplicate submission, 3749356, ran in the same folder for 30 s before the user cancelled it. Afterwards the upload still matched `MANIFEST.md5`, the settings matched the repo, and the 96 processors held 150 174 cells. The first try of this test in `skx-dev`, 3749395, was cancelled at 2:02 (problem 5).
+```
+solver exit code 124 (124 = stopped by our time guard), wall time 1468 s
+time steps completed: 2725
+last Time = 0.000279040884811
+last Leading shock location = 0.2053125 m
+max Courant number over the run: 0.320642432082
+FATAL/FPE/NaN lines: 0
+```
+- **The run:** 260.0 to 279.0 µs (19.0 µs) in 1426 s, about **75 s per µs**, against 85 for `prop1`.
+- **The front:** 0.17394 to 0.20531 m in the domain (0.474 to 0.505 m lab). That is 31.4 mm in 19.0 µs, about **1650 m/s**.
+- **It crossed the joint at x = 0.2 m, where job 3747361 crashed.** After the front passed 0.2 m, the mesh was coarsened 58 times without error. There were 214 coarsening steps in total.
+- **Errors:** none. The one log line containing "floating" is the start-up notice `Enabling floating point exception trapping`. The empty last `min/max(p)` line was cut off by the time guard.
+- **Cell count:** about 180 300, as expected from finding 2: the cells already fine at the restart cannot coarsen.
+- **Saves:** every 1 µs, 0.000261 to 0.000279.
+- **Not yet assessed:** the physics (soot foil and speed against `prop1`), which needs the full cycle.
+
 **What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
 
 **First use** (the user submits):
