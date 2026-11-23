@@ -473,6 +473,7 @@ edge:6233 vertices:(13029 13632) coords:(0.2 0.05775 -0.01)(0.20025 0.0575 0.01)
    | 3734187 | 20 min, 1 node (analysis) | (1 node) | `$SCRATCH` | ran |
    | 3743522 (2026-11-20, user-submitted) | 30 min, 1 node (recycle, `MODE=prepared`) | c454-022 | `$SCRATCH` | cancelled at 2:03, no log; uploaded `prop1_cycle1` untouched |
    | 3749319 (2026-11-23, user-submitted) | 30 min, 1 node (recycle, `MODE=prepared`) | `skx-dev` | `$SCRATCH` | started at once, cancelled at 2:02, no log; folder untouched |
+   | 3749395 (2026-11-23, user-submitted) | 30 min, 2 nodes (cycle test) | `skx-dev` | `$SCRATCH` | cancelled at 2:02, no log; folder untouched |
 
    - **2026-11-20:** the first cancellation of a job **the user submitted by hand**, and of a 30-min job. So it is not caused by submitting through the AI tool, nor by the length of the job. Before it started, `skx-dev` had stalled for about 2 h: 70 idle nodes, 0 running, 76 waiting.
 
