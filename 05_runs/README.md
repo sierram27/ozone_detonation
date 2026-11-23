@@ -444,6 +444,24 @@ FATAL/FPE/NaN lines: 0
 - **Saves:** every 1 µs, 0.000261 to 0.000279.
 - **Not yet assessed:** the physics (soot foil and speed against `prop1`), which needs the full cycle.
 
+### Cycle 1 job 3749671 (2026-11-23, `skx`, 2 nodes, 2 h, submitted by the user): RAN CLEANLY, cycle not finished yet
+```
+solver exit code 124 (124 = stopped by our time guard), wall time 6956 s
+time steps completed: 12269
+last Time = 0.000353869372927
+last Leading shock location = 0.3291875 m
+max Courant number over the run: 0.318674215917
+Unrefined from 180630 to 180276 cells.
+min/max(T) = 298.000000172, 2951.61675562
+FATAL/FPE/NaN lines: 0
+```
+- **The run:** 279.0 to 353.9 µs (74.9 µs) in 6802 s, about **91 s per µs**. That is slower than the 75 s/µs of the 30-min test, which was mostly ahead of the old outlet.
+- **The front:** 0.2053 to 0.3292 m in the domain (0.505 to 0.629 m lab). That is 123.9 mm in 74.9 µs, about **1655 m/s**, steady: every 2000 steps it moved 19.1 to 21.3 mm.
+- **Errors:** none. The only match is the start-up notice `sigFpe : Enabling floating point exception trapping`. `MPI ... KILLED BY SIGNAL: 15` is the time guard stopping the solver.
+- **Cell count:** about 180 300, flat (finding 2).
+- **Saves:** every 1 µs, 0.000280 to 0.000353.
+- **Left in cycle 1:** 0.146 m to `SW_position_limit 0.475`, about 88 µs, about 2.2 h at 91 s/µs. That is **2 more 2-h jobs**, the second stopping early. Each costs ≤ 4 SU.
+
 **What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
 
 **First use** (the user submits):
