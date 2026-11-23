@@ -397,6 +397,35 @@ refinement data decomposed: processor0/constant/polyMesh has cellLevel pointLeve
 - **Folder:** `recycle_info.txt` has `MODE=prepared`, `OFFSET=0.3` and `JOB=3744345`, and `.decomposed_ok` is written.
 - **Next:** a 30-min cycle test. The solver's own refinement checks (`hexRef82D`) run at start-up.
 
+### Cycle test job 3747361 (2026-11-22, `skx`, 2 nodes, 30 min, submitted by the user): CRASHED at 13.9 µs; two findings, one fixed
+**What worked:**
+- The solver accepted the cut mesh and its refinement data at start-up. Its own `hexRef82D` checks passed.
+- It ran 1809 steps, from 260.0 to 273.9 µs.
+- The leading shock moved from 0.17394 to 0.19694 m (domain), about 1650 m/s.
+- Max Courant number 0.32 (one step), p and T normal.
+- Wall time about **65 s per µs**. That is faster than the 85 s of `prop1`, because the mesh is now split after refinement.
+
+**Finding 1, the crash (fixed):**
+```
+Selected 142 split points out of a possible 8098.
+[88] --> FOAM FATAL ERROR: Problem : edge has too few face neighbours:1(3313)
+edge:6233 vertices:(13029 13632) coords:(0.2 0.05775 -0.01)(0.20025 0.0575 0.01)
+    From function void Foam::removeFaces::setRefinement(...)   <- hexRef82D::setUnrefinement <- dynamicRefineFvMesh2D::unrefine
+```
+- **Where:** in the first column of the **appended** cells, at x = 0.2 m. The cell had been refined after the restart and was being coarsened again. The bad edge runs diagonally, from the back plane at one point to the front plane at another. No such edge exists in the files written by `cut`: a local check found 0 non-axis edges and 0 edges with fewer than 2 faces. So the refinement step created it.
+- **Cause:** in every cell made by blockMesh or by the solver, the back face (z min) and the front face (z max) start at the same corner and run in opposite directions. This holds for all 150 174 cells of `prop1` at 260 µs. The 2D refinement relies on that pairing. The 72 000 appended cells did not follow it: their back faces started at a different corner.
+- **Fix in `recycle_fields.py cut`:** the appended cells now copy blockMesh's point order exactly (read from never-refined cells of `prop1`). The self-check now also counts cells whose back and front faces are not mirrored; a new cut gives 0 of 150 174, the old one 72 000. The synthetic test passes too.
+
+**Finding 2, a cost that is not a crash:**
+- **What happened:** the cell count rose from 150 174 to about 180 300 and then stayed there. `prop1` stayed near 150 000 through all its restarts. The +30 000 cells are all in the x-strip the front moved into.
+- **Cause:** the processors' `refinementHistory` files written by `decomposePar` are **empty**. Processors 5–7 have 1164–1600 refined cells, all marked "never split", with 0 split-cell entries. OpenFOAM 8's `refinementHistory::clone` keeps a family of cells only if it has 8 children (`splitCellNum[index] == 8`, the 3D case). In 2D a cell has 4 children, so every family is dropped, although `decomposePar` read all 42 392 entries.
+- **Consequence:** the about 32 000 fine cells at the front at the restart can never coarsen. They stay as a trail of 0.125 mm cells in the burned gas, are cut away at the next recycle, and are rebuilt at most once per cycle.
+- **Physics unchanged:** finer cells only. Cost in this test was none, at 65 s/µs.
+- `prop1` never met this, because it was decomposed at t = 0, before any refinement.
+- **Possible fix later, if the cost matters:** write the processors' histories with `recycle_fields.py`, using `cellProcAddressing`, plus a decomposition that keeps each base cell's children on one processor.
+
+**State of the run:** `prop1_cycle1` on `$SCRATCH` holds saves 0.000261–0.000273 made with the faulty appended cells. It must be replaced: renamed to `prop1_cycle1_bad1`, and the fixed cut uploaded with `MODE=prepared`.
+
 **What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
 
 **First use** (the user submits):

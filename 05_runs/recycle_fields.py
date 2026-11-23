@@ -426,9 +426,22 @@ def cmd_cut(src_tdir, tgt_tdir, tgt_polymesh, shift, length, dxc):
     P = lambda i, j, kz: pid[(i, j, kz)]
     C = lambda i, j: nk + j * nb + i
 
-    def oriented(pl, want):
+    def checked(pl, want):
+        """The templates below already give outward normals; stop if one does not (no silent flipping)."""
         n = newell([coords[k] for k in pl])
-        return pl if sum(a * b for a, b in zip(n, want)) > 0 else pl[::-1]
+        if sum(a * b for a, b in zip(n, want)) <= 0:
+            sys.exit("ERROR: new face template has the wrong orientation")
+        return pl
+
+    # New cells copy blockMesh's point order exactly (read from never-refined cells of prop1, 2026-11-23).
+    # In particular a cell's back face (z min) and front face (z max) start at the same corner and run in
+    # opposite directions (back = 00 01 11 10, front = 00 10 11 01). The solver's 2D refinement (hexRef82D)
+    # relies on that pairing: cycle test job 3747361 crashed when it unrefined a cell built with
+    # mismatched back/front faces ("edge has too few face neighbours", removeFaces).
+    # Q(i, j, dx, dy, kz) = corner (dx, dy) of base cell (i, j), kz = 0 back, 1 front.
+    Q = lambda i, j, dx, dy, kz: P(i + dx, j + dy, kz)
+    XF = lambda i, j: [Q(i, j, 1, 0, 0), Q(i, j, 1, 1, 0), Q(i, j, 1, 1, 1), Q(i, j, 1, 0, 1)]   # +x face of (i, j)
+    YF = lambda i, j: [Q(i, j, 0, 1, 0), Q(i, j, 0, 1, 1), Q(i, j, 1, 1, 1), Q(i, j, 1, 1, 0)]   # +y face of (i, j)
 
     internal = [(o, n, [newp[k] for k in f]) for o, n, f in internal]
     inlet = [(o, [newp[k] for k in f]) for o, f in inlet]
@@ -436,18 +449,19 @@ def cmd_cut(src_tdir, tgt_tdir, tgt_polymesh, shift, length, dxc):
         bfaces[name] = [(o, [newp[k] for k in f]) for o, f in bfaces[name]]
     newb = {name: [] for name in names}
     for j in range(ny):
-        internal.append((newc[owner[rows[j]]], C(0, j), oriented([newp[k] for k in faces[rows[j]]], (1, 0, 0))))
+        # joint: the old outlet face (blockMesh's +x face of the last kept cell), now internal
+        internal.append((newc[owner[rows[j]]], C(0, j), checked([newp[k] for k in faces[rows[j]]], (1, 0, 0))))
         for i in range(1, nb):
-            internal.append((C(i - 1, j), C(i, j), oriented([P(i, j, 0), P(i, j + 1, 0), P(i, j + 1, 1), P(i, j, 1)], (1, 0, 0))))
-        newb["outlet"].append((C(nb - 1, j), oriented([P(nb, j, 0), P(nb, j + 1, 0), P(nb, j + 1, 1), P(nb, j, 1)], (1, 0, 0))))
+            internal.append((C(i - 1, j), C(i, j), checked(XF(i - 1, j), (1, 0, 0))))
+        newb["outlet"].append((C(nb - 1, j), checked(XF(nb - 1, j), (1, 0, 0))))
     for i in range(nb):
         for j in range(1, ny):
-            internal.append((C(i, j - 1), C(i, j), oriented([P(i, j, 0), P(i + 1, j, 0), P(i + 1, j, 1), P(i, j, 1)], (0, 1, 0))))
-        newb["bottom"].append((C(i, 0), oriented([P(i, 0, 0), P(i + 1, 0, 0), P(i + 1, 0, 1), P(i, 0, 1)], (0, -1, 0))))
-        newb["top"].append((C(i, ny - 1), oriented([P(i, ny, 0), P(i + 1, ny, 0), P(i + 1, ny, 1), P(i, ny, 1)], (0, 1, 0))))
+            internal.append((C(i, j - 1), C(i, j), checked(YF(i, j - 1), (0, 1, 0))))
+        newb["bottom"].append((C(i, 0), checked([Q(i, 0, 0, 0, 0), Q(i, 0, 1, 0, 0), Q(i, 0, 1, 0, 1), Q(i, 0, 0, 0, 1)], (0, -1, 0))))
+        newb["top"].append((C(i, ny - 1), checked(YF(i, ny - 1), (0, 1, 0))))
         for j in range(ny):
-            for kz, w in ((0, -1), (1, 1)):
-                newb["frontAndBack"].append((C(i, j), oriented([P(i, j, kz), P(i + 1, j, kz), P(i + 1, j + 1, kz), P(i, j + 1, kz)], (0, 0, w))))
+            newb["frontAndBack"].append((C(i, j), checked([Q(i, j, 0, 0, 0), Q(i, j, 0, 1, 0), Q(i, j, 1, 1, 0), Q(i, j, 1, 0, 0)], (0, 0, -1))))
+            newb["frontAndBack"].append((C(i, j), checked([Q(i, j, 0, 0, 1), Q(i, j, 1, 0, 1), Q(i, j, 1, 1, 1), Q(i, j, 0, 1, 1)], (0, 0, 1))))
     if any(o >= n for o, n, _ in internal):
         sys.exit("ERROR: internal face with owner >= neighbour")
     internal.sort(key=lambda t: (t[0], t[1]))       # upper-triangular order, as OpenFOAM requires
@@ -549,9 +563,22 @@ def cmd_cut(src_tdir, tgt_tdir, tgt_polymesh, shift, length, dxc):
         o = cen[own2[fi]]
         if sum(n[q] * (fc[q] - o[q]) for q in range(3)) <= 0:      # must point out of the owner
             wrong += 1
+    # every cell: back and front face start at the same (x, y) corner and run in opposite directions
+    zb, zf = {}, {}
+    for fi in range(len(nei2), len(faces2)):
+        f = faces2[fi]
+        if all(abs(pts2[k][2] - pts2[f[0]][2]) < eps for k in f):
+            (zb if pts2[f[0]][2] < (z0 + z1) / 2 else zf)[own2[fi]] = f
+    unpaired = 0
+    for c in range(ncell):
+        fb, ff = zb.get(c), zf.get(c)
+        if fb is None or ff is None or len(fb) != len(ff) or any(
+                abs(pts2[fb[k]][0] - pts2[ff[(len(fb) - k) % len(fb)]][0]) > eps or
+                abs(pts2[fb[k]][1] - pts2[ff[(len(fb) - k) % len(fb)]][1]) > eps for k in range(len(fb))):
+            unpaired += 1
     print(f"   self-check: cells in the wrong place: {bad}; total area {area:.9f} m2 (expected {L * (ymax - ymin):.9f}); "
-          f"faces pointing into their owner: {wrong}")
-    if bad or wrong or abs(area - L * (ymax - ymin)) > 1e-9:
+          f"faces pointing into their owner: {wrong}; cells whose back/front faces are not mirrored: {unpaired}")
+    if bad or wrong or unpaired or abs(area - L * (ymax - ymin)) > 1e-9:
         sys.exit("ERROR: self-check of the new mesh failed")
     p2 = values(os.path.join(tgt_tdir, "p"), ncell)
     psrc = values(os.path.join(src_tdir, "p"), nold)
