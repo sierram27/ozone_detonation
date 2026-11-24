@@ -12,6 +12,13 @@ Reads only; writes PNG plots and a JSON summary into <out dir>.
     p > 101425 Pa), one value per time step.
   - maxp: highest pressure each cell has seen. Triple points leave high-maxp tracks,
     which outline the detonation cells.
+
+Optional environment settings (for recycled runs, see recycle.slurm; unset = the original behaviour):
+  OFFSET=0.3     lab position = domain position + OFFSET (from the run's recycle_info.txt); the plots
+                 and the region limits below use lab positions.
+  REGIONS="before:0.40:0.474,after:0.55:0.77"
+                 cell-size spectra and maxp zooms for each named lab-x range (m) separately,
+                 e.g. the record made before a recycle and the one made after it.
 """
 import json, re, sys, os
 import numpy as np
@@ -25,6 +32,8 @@ H = 0.06               # channel height, m
 log_path, tdir, out = sys.argv[1], sys.argv[2], sys.argv[3]
 os.makedirs(out, exist_ok=True)
 summary = {}
+OFFSET = float(os.environ.get("OFFSET", "0") or 0)
+summary["offset_m"] = OFFSET
 
 # ---------------------------------------------------------------- shock position
 t, xs = [], []
@@ -59,7 +68,7 @@ for a, b in zip(edges[:-1], edges[1:]):
 tc, Dw = np.array(tc), np.array(Dw)
 late = tc >= 25e-6
 summary.update({
-    "t_end_us": t[-1] * 1e6, "x_start_mm": xs[0] * 1e3, "x_end_mm": xs[-1] * 1e3,
+    "t_end_us": t[-1] * 1e6, "x_start_mm": xs[0] * 1e3, "x_end_mm": xs[-1] * 1e3, "x_start_lab_mm": (xs[0] + OFFSET) * 1e3, "x_end_lab_mm": (xs[-1] + OFFSET) * 1e3,
     "D_mean_whole_run": D_all, "D_linear_fit_25us_to_end": D_fit25, "fit_points": n25,
     "D_fit_vs_CJ_percent": 100 * (D_fit25 / D_CJ - 1),
     "D_linear_fit_last_100us": D_last100, "D_last100_vs_CJ_percent": 100 * (D_last100 / D_CJ - 1),
@@ -67,9 +76,9 @@ summary.update({
 })
 
 fig, ax = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
-ax[0].plot(t * 1e6, xs * 1e3, lw=1, label="leading shock (solver)")
-ax[0].plot(t * 1e6, (xs[0] + D_CJ * (t - t[0])) * 1e3, "k--", lw=1, label=f"D_CJ = {D_CJ:.0f} m/s from start")
-ax[0].set_ylabel("x (mm)"); ax[0].legend(); ax[0].grid(alpha=.3)
+ax[0].plot(t * 1e6, (xs + OFFSET) * 1e3, lw=1, label="leading shock (solver)")
+ax[0].plot(t * 1e6, (xs[0] + OFFSET + D_CJ * (t - t[0])) * 1e3, "k--", lw=1, label=f"D_CJ = {D_CJ:.0f} m/s from start")
+ax[0].set_ylabel("x (mm)" + (f", lab (domain + {OFFSET:g} m)" if OFFSET else "")); ax[0].legend(); ax[0].grid(alpha=.3)
 ax[1].step(tc * 1e6, Dw, where="mid", label="speed in 2 µs windows")
 ax[1].axhline(D_CJ, color="k", ls="--", lw=1, label="D_CJ")
 ax[1].axhline(D_fit25, color="C3", ls=":", lw=1.5, label=f"fit 25 µs–end: {D_fit25:.0f} m/s")
@@ -100,7 +109,7 @@ sel = cx < x1 + 1e-3
 grid = lambda v: griddata((cx[sel], cy[sel]), v[sel], (GX, GY), method="nearest")
 Gmaxp, Gp, GT = grid(maxp), grid(p), grid(T)
 
-ext = [x0 * 1e3, x1 * 1e3, 0, H * 1e3]
+ext = [(x0 + OFFSET) * 1e3, (x1 + OFFSET) * 1e3, 0, H * 1e3]
 fig, ax = plt.subplots(3, 1, figsize=(16, 7), sharex=True)
 im = ax[0].imshow(Gmaxp, origin="lower", extent=ext, cmap="Greys", norm=LogNorm(vmin=1.5e5, vmax=np.percentile(maxp, 99.9)), aspect="equal")
 ax[0].set_title(f"maxp (peak pressure history) at t = {t[-1]*1e6:.1f} µs: triple-point tracks"); fig.colorbar(im, ax=ax[0], label="Pa")
@@ -109,44 +118,60 @@ ax[1].set_title("p (kPa), final time"); fig.colorbar(im, ax=ax[1])
 im = ax[2].imshow(GT, origin="lower", extent=ext, cmap="inferno", aspect="equal")
 ax[2].set_title("T (K), final time"); fig.colorbar(im, ax=ax[2])
 for a in ax: a.set_ylabel("y (mm)")
-ax[2].set_xlabel("x (mm)")
+ax[2].set_xlabel("x (mm)" + (" (lab)" if OFFSET else ""))
 fig.tight_layout(); fig.savefig(f"{out}/fields_final.png", dpi=150); plt.close(fig)
 
 # ---------------------------------------------------------------- cell size from maxp
-# Region swept by the front after the start-up: x from 80 mm to 5 mm behind the final front.
-xa, xb = 0.080, xs[-1] - 0.005
-cols = (gx >= xa) & (gx <= xb)
-A = np.log(Gmaxp[:, cols]); A = A - A.mean(axis=0)
-# transverse (y) spectrum, averaged over columns. Wavelengths H/k for k = 1..40
-Py = (np.abs(np.fft.rfft(A, axis=0)) ** 2).mean(axis=1)
-ky = np.arange(Py.size)
-lam_y = np.where(ky > 0, H / np.maximum(ky, 1), np.inf)
-# longitudinal (x) spectrum, averaged over rows
-B = np.log(Gmaxp[:, cols]); B = B - B.mean(axis=1, keepdims=True)
-Px = (np.abs(np.fft.rfft(B, axis=1)) ** 2).mean(axis=0)
-Lx = cols.sum() * dx
-lam_x = np.where(np.arange(Px.size) > 0, Lx / np.maximum(np.arange(Px.size), 1), np.inf)
-topy = [(float(lam_y[i] * 1e3), float(Py[i] / Py[1:].max())) for i in np.argsort(Py[1:41])[::-1][:5] + 1]
-mx = (lam_x > 2e-3) & (lam_x < 0.06)
-ix = np.where(mx)[0]
-topx = [(float(lam_x[i] * 1e3), float(Px[i] / Px[ix].max())) for i in ix[np.argsort(Px[ix])[::-1][:5]]]
-summary.update({"cell_analysis_region_mm": [xa * 1e3, xb * 1e3],
-                "y_spectrum_top5_wavelength_mm_relpower": topy,
-                "x_spectrum_top5_wavelength_mm_relpower": topx})
+def cell_size(xa, xb, tag=""):
+    """Spectra of log(maxp) and a zoom for domain x in [xa, xb]; files get the suffix tag."""
+    sfx = f"_{tag}" if tag else ""
+    cols = (gx >= xa) & (gx <= xb)
+    A = np.log(Gmaxp[:, cols]); A = A - A.mean(axis=0)
+    # transverse (y) spectrum, averaged over columns. Wavelengths H/k for k = 1..40
+    Py = (np.abs(np.fft.rfft(A, axis=0)) ** 2).mean(axis=1)
+    ky = np.arange(Py.size)
+    lam_y = np.where(ky > 0, H / np.maximum(ky, 1), np.inf)
+    # longitudinal (x) spectrum, averaged over rows
+    B = np.log(Gmaxp[:, cols]); B = B - B.mean(axis=1, keepdims=True)
+    Px = (np.abs(np.fft.rfft(B, axis=1)) ** 2).mean(axis=0)
+    Lx = cols.sum() * dx
+    lam_x = np.where(np.arange(Px.size) > 0, Lx / np.maximum(np.arange(Px.size), 1), np.inf)
+    topy = [(float(lam_y[i] * 1e3), float(Py[i] / Py[1:].max())) for i in np.argsort(Py[1:41])[::-1][:5] + 1]
+    mx = (lam_x > 2e-3) & (lam_x < 0.06)
+    ix = np.where(mx)[0]
+    topx = [(float(lam_x[i] * 1e3), float(Px[i] / Px[ix].max())) for i in ix[np.argsort(Px[ix])[::-1][:5]]]
+    lab = " (lab)" if OFFSET else ""
+    summary.update({f"cell_analysis_region_mm{'_lab' if OFFSET else ''}{sfx}": [(xa + OFFSET) * 1e3, (xb + OFFSET) * 1e3],
+                    f"y_spectrum_top5_wavelength_mm_relpower{sfx}": topy,
+                    f"x_spectrum_top5_wavelength_mm_relpower{sfx}": topx})
+    where = f" {tag}, x = {(xa + OFFSET) * 1e3:.0f}-{(xb + OFFSET) * 1e3:.0f} mm{lab}" if tag else ""
 
-fig, ax = plt.subplots(1, 2, figsize=(11, 4))
-ax[0].plot(lam_y[1:41] * 1e3, Py[1:41] / Py[1:41].max(), "o-"); ax[0].set_xscale("log")
-ax[0].set_xlabel("transverse wavelength (mm)"); ax[0].set_ylabel("relative power"); ax[0].set_title("log maxp, spectrum across the channel"); ax[0].grid(alpha=.3)
-ax[1].plot(lam_x[ix] * 1e3, Px[ix] / Px[ix].max(), "o-"); ax[1].set_xscale("log")
-ax[1].set_xlabel("longitudinal wavelength (mm)"); ax[1].set_title("log maxp, spectrum along the channel"); ax[1].grid(alpha=.3)
-fig.tight_layout(); fig.savefig(f"{out}/maxp_spectra.png", dpi=150); plt.close(fig)
+    fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+    ax[0].plot(lam_y[1:41] * 1e3, Py[1:41] / Py[1:41].max(), "o-"); ax[0].set_xscale("log")
+    ax[0].set_xlabel("transverse wavelength (mm)"); ax[0].set_ylabel("relative power"); ax[0].set_title("log maxp, spectrum across the channel" + where, fontsize=9); ax[0].grid(alpha=.3)
+    ax[1].plot(lam_x[ix] * 1e3, Px[ix] / Px[ix].max(), "o-"); ax[1].set_xscale("log")
+    ax[1].set_xlabel("longitudinal wavelength (mm)"); ax[1].set_title("log maxp, spectrum along the channel" + where, fontsize=9); ax[1].grid(alpha=.3)
+    fig.tight_layout(); fig.savefig(f"{out}/maxp_spectra{sfx}.png", dpi=150); plt.close(fig)
 
-# zoom of the maxp tracks in the analysis region
-fig, ax = plt.subplots(figsize=(12, 4))
-im = ax.imshow(Gmaxp[:, cols], origin="lower", extent=[xa * 1e3, xb * 1e3, 0, H * 1e3], cmap="Greys",
-               norm=LogNorm(vmin=1.5e5, vmax=np.percentile(maxp, 99.9)), aspect="equal")
-ax.set_xlabel("x (mm)"); ax.set_ylabel("y (mm)"); ax.set_title("maxp, swept region after start-up")
-fig.colorbar(im, ax=ax, label="Pa"); fig.tight_layout(); fig.savefig(f"{out}/maxp_zoom.png", dpi=170); plt.close(fig)
+    # zoom of the maxp tracks in the analysis region
+    fig, ax = plt.subplots(figsize=(12, 4))
+    im = ax.imshow(Gmaxp[:, cols], origin="lower", extent=[(xa + OFFSET) * 1e3, (xb + OFFSET) * 1e3, 0, H * 1e3], cmap="Greys",
+                   norm=LogNorm(vmin=1.5e5, vmax=np.percentile(maxp, 99.9)), aspect="equal")
+    ax.set_xlabel("x (mm)" + lab); ax.set_ylabel("y (mm)"); ax.set_title("maxp, swept region after start-up" + where)
+    fig.colorbar(im, ax=ax, label="Pa"); fig.tight_layout(); fig.savefig(f"{out}/maxp_zoom{sfx}.png", dpi=170); plt.close(fig)
+
+
+REGIONS = os.environ.get("REGIONS", "").strip()
+if REGIONS:
+    for r in REGIONS.split(","):
+        tag, a_, b_ = r.split(":")
+        xa, xb = float(a_) - OFFSET, min(float(b_) - OFFSET, xs[-1] - 0.005)   # lab -> domain; stop 5 mm behind the front
+        if not (0.0 <= xa < xb <= x1):
+            sys.exit(f"ERROR: region {r} is outside the domain (lab {OFFSET:g}-{x1 + OFFSET:g} m)")
+        cell_size(xa, xb, tag)
+else:
+    # Region swept by the front after the start-up: x from 80 mm to 5 mm behind the final front.
+    cell_size(0.080, xs[-1] - 0.005)
 
 json.dump(summary, open(f"{out}/prop_summary.json", "w"), indent=2)
 print(json.dumps(summary, indent=2))

@@ -479,6 +479,31 @@ solver exit code 0 (124 = stopped by our time guard), wall time 1709 s
 - **Last save:** 0.000441 (front ≈ 0.475 m). It is in `$SCRATCH`, which is purged after 10 days, so the next recycle should run soon.
 - **Not yet assessed:** the physics, i.e. the soot foil (`maxp`) of cycle 1 against `prop1`.
 
+### Cycle 1 soot foil and speed (analysed on the laptop, 2026-11-24): the recycle did not disturb the physics
+Results: `results/prop1_cycle1_441us/` (`fields_final.png`, `maxp_zoom_before/after.png`, `maxp_spectra_before/after.png`, `shock_speed.png`, `prop_summary.json`).
+
+Because `maxp` was carried over unchanged by the cut, the final save of cycle 1 holds **both** records in one foil: lab x = 0.30–0.474 m was made by `prop1` *before* the recycle, and 0.474–0.775 m was made in cycle 1 *after* it. Comparing the two regions:
+
+| | before (lab 300–474 mm, `prop1`) | after (lab 550–770 mm, cycle 1) |
+|---|---|---|
+| strongest transverse wavelength of log(maxp) | **30 mm** (then 60, 20) | **30 mm** (then 20, 60) |
+| strongest longitudinal wavelengths | **58, 43.5 mm** | **55, 44 mm** |
+| wall collisions at y = 0 | x ≈ 350, 437 mm (87 mm apart) | x ≈ 595, 680 mm (85 mm apart) |
+
+- **The foil is continuous across the joint** (lab 474 mm, the front position at the recycle) and across the old outlet (lab 500 mm). There is no seam, kink or gap in the triple-point tracks (`fields_final.png`).
+- **Same cells:** 2 cells across the 60 mm channel, about 85 mm long, as in `prop1` (this README, "Cellular structure": 80–90 mm collision spacing). If anything, the pattern after the recycle is more regular.
+- **Speed:** 1660 m/s over 260–441 µs (linear fit), **2.7 % above D_CJ = 1616 m/s**. It oscillates between 1610 and 1718 m/s with a period of about 15 µs, the cell cycle, with no drift and no jump at the restart.
+- **Conclusion:** the cut-and-append recycle preserved the detonation's cellular structure and speed. This is the physical check that was missing; cycle 2 can proceed.
+
+**How it was done, without a Stampede3 job:**
+1. Download the last save (77 MB): `processor*/0.000441/{maxp,p,T,cellLevel,polyMesh}`, `processor*/constant`, `system`, and only the `Time =` / `Leading shock location` lines of the solver logs, into `local_data/prop1_cycle1_0.000441/` (not in git); `touch case.foam`.
+2. `pvpython 05_runs/export_cells_paraview.py local_data/prop1_cycle1_0.000441 0.000441 local_data/prop1_cycle1_0.000441/cells_0.000441`
+   - ParaView reads the 96 processor pieces directly, so no `reconstructPar` is needed. It wrote 180 315 cells, the same count as on Stampede3.
+3. `MPLBACKEND=Agg OFFSET=0.3 REGIONS="before:0.30:0.474,after:0.55:0.77" pvpython 05_runs/analyze_prop.py <logs, comma-separated> <cells dir> <out dir>`
+   - `pvpython` is ParaView's Python (`/Applications/ParaView-6.2.1.app/Contents/bin/pvpython`), which has numpy, scipy and matplotlib.
+   - `OFFSET` and `REGIONS` are new, optional settings in `analyze_prop.py`. Unset, the script behaves as before. With them, plots use lab positions and each named region gets its own spectra and zoom. `analyze.slurm` passes them on with `sbatch --export=ALL,...,OFFSET=0.3,REGIONS=...`.
+   - **Checked on the laptop:** the same lab region analysed from the original `prop1` data and from the shifted cycle-1 data gave the same wavelengths.
+
 **What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
 
 **First use** (the user submits):
@@ -499,7 +524,8 @@ solver exit code 0 (124 = stopped by our time guard), wall time 1709 s
 - `paraview_maxp.py` (Mac): ParaView startup script showing `maxp` from a `to_vtk.slurm` file. `VTK_FILE=<file.vtk> /Applications/ParaView-6.2.1.app/Contents/MacOS/paraview --script=05_runs/paraview_maxp.py`. `open -a ParaView file.vtk` doesn't load the file in ParaView 6.2.1.
 - `to_vtk.slurm` (1 node, ≤ 20 min, about 0.1 SU): one saved time as VTK for ParaView. `reconstructPar` of all solution fields, then `foamToVTK`, then `$WORK/ozone_detonation/runs/<run>/<run>_vtk_<time>.tar.gz`. `sbatch --export=ALL,RUN_NAME=prop1[,TIME=0.0001] to_vtk.slurm`. The first try (job 3734272) failed because `foamToVTK` reads every file header in the time folder, including the OpenFOAM 12 `Ccx`/`Ccy` (`keyword version is undefined`). The script now moves them aside while it runs (job 3734275: 200 µs, 54 MB, 19 MB packed). Download to the Mac with `ssh stampede3 'cat $WORK/ozone_detonation/runs/prop1/prop1_vtk_0.0002.tar.gz' > local_data/prop1_vtk_0.0002.tar.gz` (`local_data/` is not in git).
 - `analyze.slurm` (1 node, ≤ 20 min, about 0.05 SU): `reconstructParMesh` (needed because AMR changed the mesh; the first try, job 3732270, failed in `reconstructPar` with `cannot find file ".../pointProcAddressing"`), then `reconstructPar` of maxp/p/T/cellLevel, then OpenFOAM 12 cell centres, then `analyze_prop.py`.
-- `analyze_prop.py`: shock x(t) and D(t) from the solver log; maxp/p/T maps on a 0.125 mm grid; spectra of log(maxp) for the cell size; `prop_summary.json`.
+- `analyze_prop.py`: shock x(t) and D(t) from the solver log; maxp/p/T maps on a 0.125 mm grid; spectra of log(maxp) for the cell size; `prop_summary.json`. Optional `OFFSET` (lab = domain + OFFSET) and `REGIONS="name:x0:x1,..."` (lab m, separate spectra per region) for recycled runs.
+- `export_cells_paraview.py` (laptop, `pvpython`): reads a decomposed run with ParaView and writes Ccx/Ccy/maxp/p/T/cellLevel for `analyze_prop.py`, replacing steps [1]–[2] of `analyze.slurm`.
 
 ## Problems found and fixed
 1. **`decomposePar` stopped on `0/Cy`** (job 3730993): `FOAM FATAL IO ERROR: keyword version is undefined in dictionary ".../0/Cy"`. The file was written by OpenFOAM 12, whose header omits `version`. **Fix:** the run copy deletes `0/Cx` and `0/Cy`, which the solver never reads.

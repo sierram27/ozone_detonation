@@ -1,0 +1,128 @@
+{
+  "offset_m": 0.3,
+  "logs": [
+    "local_data/prop1_cycle1_0.000441/log.detonationFoam.3749428",
+    "local_data/prop1_cycle1_0.000441/log.detonationFoam.3749671",
+    "local_data/prop1_cycle1_0.000441/log.detonationFoam.3751949",
+    "local_data/prop1_cycle1_0.000441/log.detonationFoam.3752279"
+  ],
+  "t_end_us": 441.43586788000005,
+  "x_start_mm": 173.9375,
+  "x_end_mm": 475.0625,
+  "x_start_lab_mm": 473.9375,
+  "x_end_lab_mm": 775.0625,
+  "D_mean_whole_run": 1659.6883160583259,
+  "D_linear_fit_25us_to_end": 1659.836593178223,
+  "fit_points": 29242,
+  "D_fit_vs_CJ_percent": 2.7190168437541296,
+  "D_linear_fit_last_100us": 1663.5011999115684,
+  "D_last100_vs_CJ_percent": 2.9458010960807135,
+  "D_2us_windows_after_25us_min_max_std": [
+    1609.883252028004,
+    1717.981217329049,
+    26.07578403488745
+  ],
+  "cells": 180315,
+  "cells_per_level": {
+    "0": 115686,
+    "1": 1465,
+    "2": 63164
+  },
+  "maxp_max_kPa": 294.8586875,
+  "cell_analysis_region_mm_lab_before": [
+    300.0,
+    474.0
+  ],
+  "y_spectrum_top5_wavelength_mm_relpower_before": [
+    [
+      30.0,
+      1.0
+    ],
+    [
+      60.0,
+      0.8595642680348511
+    ],
+    [
+      20.0,
+      0.6096824492505358
+    ],
+    [
+      15.0,
+      0.3662632719358623
+    ],
+    [
+      10.0,
+      0.23545979630361955
+    ]
+  ],
+  "x_spectrum_top5_wavelength_mm_relpower_before": [
+    [
+      58.0,
+      1.0
+    ],
+    [
+      43.50000000000001,
+      0.9551690035796456
+    ],
+    [
+      34.800000000000004,
+      0.26294654275505347
+    ],
+    [
+      29.0,
+      0.25703486349670157
+    ],
+    [
+      19.333333333333336,
+      0.24521201256138536
+    ]
+  ],
+  "cell_analysis_region_mm_lab_after": [
+    550.0,
+    770.0
+  ],
+  "y_spectrum_top5_wavelength_mm_relpower_after": [
+    [
+      30.0,
+      1.0
+    ],
+    [
+      20.0,
+      0.7489650597572463
+    ],
+    [
+      60.0,
+      0.7037662765355353
+    ],
+    [
+      15.0,
+      0.3343162330763657
+    ],
+    [
+      12.0,
+      0.27693902683589505
+    ]
+  ],
+  "x_spectrum_top5_wavelength_mm_relpower_after": [
+    [
+      55.0,
+      1.0
+    ],
+    [
+      44.0,
+      0.9533350063427323
+    ],
+    [
+      22.0,
+      0.3542873946919714
+    ],
+    [
+      31.42857142857143,
+      0.2840288257895188
+    ],
+    [
+      36.666666666666664,
+      0.20857720878842312
+    ]
+  ]
+}
