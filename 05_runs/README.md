@@ -462,6 +462,23 @@ FATAL/FPE/NaN lines: 0
 - **Saves:** every 1 µs, 0.000280 to 0.000353.
 - **Left in cycle 1:** 0.146 m to `SW_position_limit 0.475`, about 88 µs, about 2.2 h at 91 s/µs. That is **2 more 2-h jobs**, the second stopping early. Each costs ≤ 4 SU.
 
+### Cycle 1 jobs 3751949 and 3752279 (2026-11-23/24, `skx`, 2 nodes, submitted by the user): CYCLE 1 FINISHED
+| job | time (µs) | front, domain (m) | front, lab (m) | speed | s per µs | end |
+|---|---|---|---|---|---|---|
+| 3751949 (2 h) | 353.9 → 425.0 | 0.3292 → 0.4476 | 0.629 → 0.748 | ~1665 m/s | 93.5 | time guard (exit 124) |
+| 3752279 | 425.0 → 441.4 | 0.4476 → 0.4751 | 0.748 → 0.775 | ~1670 m/s | 96 | **`SW_position_limit` reached, exit 0**, 28.5 min |
+```
+last Time = 0.00044143586788
+last Leading shock location = 0.4750625 m
+min/max(T) = 298.000000172, 2961.70300509
+FATAL/FPE/NaN lines: 0
+solver exit code 0 (124 = stopped by our time guard), wall time 1709 s
+```
+- **All of cycle 1** (jobs 3749428, 3749671, 3751949, 3752279): 260.0 → 441.4 µs; front 0.1739 → 0.4751 m domain (0.474 → 0.775 m lab). That is 0.301 m in 181.4 µs, **about 1660 m/s, steady** through the cycle. No errors in any job. Cells stayed at about 180 k.
+- **Cost:** about 4.9 node-hours of solver time ≈ 10 SU, plus 0.07 SU for the cancelled job 3751193.
+- **Last save:** 0.000441 (front ≈ 0.475 m). It is in `$SCRATCH`, which is purged after 10 days, so the next recycle should run soon.
+- **Not yet assessed:** the physics, i.e. the soot foil (`maxp`) of cycle 1 against `prop1`.
+
 **What it changes in the physics:** only the burned gas more than about 0.175 m behind the front is dropped, as in the averaging version. The front, its fine cells and `maxp` are not altered.
 
 **First use** (the user submits):
