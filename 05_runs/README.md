@@ -510,6 +510,9 @@ FATAL/FPE/NaN lines: 0
    | 3743522 (2026-11-20, user-submitted) | 30 min, 1 node (recycle, `MODE=prepared`) | c454-022 | `$SCRATCH` | cancelled at 2:03, no log; uploaded `prop1_cycle1` untouched |
    | 3749319 (2026-11-23, user-submitted) | 30 min, 1 node (recycle, `MODE=prepared`) | `skx-dev` | `$SCRATCH` | started at once, cancelled at 2:02, no log; folder untouched |
    | 3749395 (2026-11-23, user-submitted) | 30 min, 2 nodes (cycle test) | `skx-dev` | `$SCRATCH` | cancelled at 2:02, no log; folder untouched |
+   | 3751193 (2026-11-23, user-submitted) | 2 h, 2 nodes (cycle 1 continuation) | `skx`, c482-[041-042] | `$SCRATCH` | cancelled at 2:03, no log; latest save still 0.000353 |
+
+   - **2026-11-23:** the first cancellation in **`skx`** (job 3751193). So `skx` is affected too, not only `skx-dev`. Earlier `skx` jobs 3749428 and 3749671 ran normally.
 
    - **2026-11-20:** the first cancellation of a job **the user submitted by hand**, and of a 30-min job. So it is not caused by submitting through the AI tool, nor by the length of the job. Before it started, `skx-dev` had stalled for about 2 h: 70 idle nodes, 0 running, 76 waiting.
 
