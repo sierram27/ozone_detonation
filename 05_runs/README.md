@@ -493,6 +493,7 @@ Because `maxp` was carried over unchanged by the cut, the final save of cycle 1 
 - **The foil is continuous across the joint** (lab 474 mm, the front position at the recycle) and across the old outlet (lab 500 mm). There is no seam, kink or gap in the triple-point tracks (`fields_final.png`).
 - **Same cells:** 2 cells across the 60 mm channel, about 85 mm long, as in `prop1` (this README, "Cellular structure": 80–90 mm collision spacing). If anything, the pattern after the recycle is more regular.
 - **Speed:** 1660 m/s over 260–441 µs (linear fit), **2.7 % above D_CJ = 1616 m/s**. It oscillates between 1610 and 1718 m/s with a period of about 15 µs, the cell cycle, with no drift and no jump at the restart.
+- **Whole foil, 0–0.775 m lab** (`sootfoil_lab_0_to_775mm.png`, ParaView): `prop1` at 260 µs for x < 0.30 m, then cycle 1 at 441.4 µs moved back +0.30 m. Red lines: 0.30 m, where the picture switches from `prop1` data to cycle-1 data (identical there), and 0.474 m, the front at the recycle.
 - **Conclusion:** the cut-and-append recycle preserved the detonation's cellular structure and speed. This is the physical check that was missing; cycle 2 can proceed.
 
 **How it was done, without a Stampede3 job:**
