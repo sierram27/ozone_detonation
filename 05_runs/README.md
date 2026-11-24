@@ -495,6 +495,14 @@ Because `maxp` was carried over unchanged by the cut, the final save of cycle 1 
 - **Speed:** 1660 m/s over 260–441 µs (linear fit), **2.7 % above D_CJ = 1616 m/s**. It oscillates between 1610 and 1718 m/s with a period of about 15 µs, the cell cycle, with no drift and no jump at the restart.
 - **Whole foil, 0–0.775 m lab** (`sootfoil_lab_0_to_775mm.png`, ParaView): `prop1` at 260 µs for x < 0.30 m, then cycle 1 at 441.4 µs moved back +0.30 m. Red lines: 0.30 m, where the picture switches from `prop1` data to cycle-1 data (identical there), and 0.474 m, the front at the recycle.
 - **Every field on the same strip** (`strips/strip_<field>.png`: maxp, T, p, Ux, and the 9 mass fractions): `prop1` at 260 µs for x < 0.30 m joined with cycle 1 at 441.4 µs from 0.30 m (ParaView `AppendDatasets`, so the colour drop-down switches the whole strip). Only `maxp` (a history) is continuous in time; the other fields are snapshots of two different times on either side of 0.30 m. Data: the 441 µs save with all fields, 139 MB, in `local_data/prop1_cycle1_0.000441/`.
+- **Streaks in the velocity between lab 0.30 and 0.474 m (found by the user in |U|, 2026-11-24): inflow through the left boundary, not a recycle error.**
+  - The left boundary (`inlet`) has `zeroGradient` for U, p and T in both `prop1` and cycle 1 (Stanford set-up, unchanged). It acts as an open inflow: burned gas enters at the speed of the first cell column, about **950 m/s**, with its T and p.
+  - In 181 µs that gas travels 950 × 181 µs ≈ 0.17 m, so at 441 µs lab 0.30–0.47 m is gas that entered through the boundary. y-averaged values there are flat along x: Ux = 947–950 m/s, T = 2900–2903 K, p = 140–142 kPa from 0.3005 to 0.48 m.
+  - `zeroGradient` copies the first column's **y-profile**, so that profile is stretched along x. At the cut, lab 0.28–0.31 m held the remains of the start-up (the blob at 0.28 m: Ux spread across y 66–105 m/s, against 6–9 m/s at 0–0.26 m). That spread became the streaks (spread about 80 m/s along the whole band). In Euler flow nothing damps such parallel shear layers except numerical diffusion.
+  - The same happens in `prop1`: lab 0–0.247 m at 260 µs is gas that entered at x = 0 (950 × 260 µs). There the copied profile was uniform, so it shows no streaks. The blob at 0.28 m is start-up gas that was at x ≈ 0.03 m at t = 0, carried along at 950 m/s.
+  - **Effect on the front:** none seen. The band moves at 950 m/s, the front at 1660 m/s, so the gap grows; the soot foil and speed after the recycle match `prop1` (above).
+  - **Next cycle:** the cut at lab 0.60 m lies where the y-spread is only 16–18 m/s, so the copied profile, and its streaks, will be about 5 times weaker.
+
 - **Conclusion:** the cut-and-append recycle preserved the detonation's cellular structure and speed. This is the physical check that was missing; cycle 2 can proceed.
 
 **How it was done, without a Stampede3 job:**
